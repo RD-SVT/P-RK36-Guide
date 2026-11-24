@@ -1209,9 +1209,27 @@ const clock = new THREE.Clock();
 const smooth = t => t * t * (3 - 2 * t);
 const _cam = new THREE.Vector3(), _w = new THREE.Vector3(), _proj = new THREE.Vector3();
 let first = true;
+/* hide pins that sit behind a wall (checked a few times a second, not every frame) */
+const occRay = new THREE.Raycaster(), _od = new THREE.Vector3();
+let occT = 0, occKey = '';
+function updateOcclusion() {
+  camera.getWorldPosition(_cam);
+  for (const p of parts) {
+    p.anchor.getWorldPosition(_w);
+    _od.copy(_w).sub(_cam); const dist = _od.length();
+    occRay.set(_cam, _od.normalize()); occRay.far = Math.max(0, dist - 0.04);
+    const hit = occRay.intersectObject(vm, true).find(h => !(h.object.material && h.object.material.transparent));
+    p.occ = !!hit;
+  }
+}
 function updatePins() {
   if (!S.pins) return false;
   let moving = false;
+  const key = camera.position.toArray().concat(controls.target.toArray(), [S.door, S.inner]).map(v => v.toFixed(3)).join();
+  if (key !== occKey) {
+    if (performance.now() - occT > 120) { updateOcclusion(); occT = performance.now(); occKey = key; }
+    moving = true;                                 // keep rendering until the check has run for the final pose
+  }
   const w = canvas.clientWidth, h = canvas.clientHeight;
   camera.getWorldPosition(_cam);
   for (const p of parts) {
@@ -1224,6 +1242,7 @@ function updatePins() {
     if (p.zone === 'mr' || p.zone === 'cab') { if (S.door < 0.9) show = false; }
     _proj.copy(_w).project(camera);
     if (_proj.z > 1) show = false;
+    if (p.occ) show = false;
     const target = show ? 1 : 0;
     p.vis += (target - p.vis) * 0.25;
     if (Math.abs(target - p.vis) > 0.01) moving = true; else p.vis = target;
