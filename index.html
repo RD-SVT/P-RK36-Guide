@@ -633,7 +633,8 @@ B(0.57, 0.575, 0.3, 1.85, -0.345, 0.15, M.liner, vm);
 B(-0.575, 0.575, 1.845, 1.85, -0.345, 0.15, M.liner, vm);
 B(-0.575, 0.575, 0.3, 1.85, -0.345, -0.34, M.liner, vm);
 // feet
-[[-0.53, -0.3], [0.53, -0.3], [-0.53, 0.3], [0.53, 0.3]].forEach(([x, z]) => {
+// feet: all four under the cabinet body (the front pair used to stick out under the door)
+[[-0.53, -0.3], [0.53, -0.3], [-0.53, 0.11], [0.53, 0.11]].forEach(([x, z]) => {
   Cyl(0.028, 0.012, x, 0.006, z, M.chrome, vm); Cyl(0.008, 0.03, x, 0.027, z, M.chrome, vm);
 });
 // nameplate on right side
