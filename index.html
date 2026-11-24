@@ -271,6 +271,8 @@ const $ = s => document.querySelector(s);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let dirty = true;                       // render on demand: set when the picture must change
 const invalidate = () => { dirty = true; };
+let layoutUntil = 0;                    // panels are moving: re-measure the free area until then
+const layoutChanged = () => { layoutUntil = performance.now() + 700; invalidate(); };
 
 /* ---------------- renderer / scene ---------------- */
 const canvas = $('#c');
@@ -286,6 +288,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, PHONE ? 1.5 : 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.95;
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.autoUpdate = false;   // light never moves: rebuild only when the doors move
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
@@ -493,6 +496,41 @@ const floorTex = ctex(512, 512, (g, w, h) => {
   g.strokeStyle = 'rgba(80,85,88,.35)'; g.lineWidth = 2; g.strokeRect(0, 0, w, h);
 }, { repeat: [10, 10] });
 
+/* one mesh + one atlas texture for many small labels (one draw call instead of one per label) */
+function quadAtlas(items, cols, cw, ch, draw, qw, qh, matOpts, parent) {
+  const rows = Math.ceil(items.length / cols);
+  const tex = ctex(cols * cw, rows * ch, (g) => items.forEach((it, i) => {
+    const c = i % cols, r = Math.floor(i / cols);
+    g.save(); g.translate(c * cw, r * ch); g.beginPath(); g.rect(0, 0, cw, ch); g.clip(); draw(g, cw, ch, it); g.restore();
+  }));
+  const pos = [], uv = [], nor = [], idx = [];
+  items.forEach((it, i) => {
+    const c = i % cols, r = Math.floor(i / cols), b = i * 4;
+    const u0 = c / cols, u1 = (c + 1) / cols, v1 = 1 - r / rows, v0 = 1 - (r + 1) / rows;
+    pos.push(it.x - qw / 2, it.y + qh / 2, it.z, it.x + qw / 2, it.y + qh / 2, it.z, it.x - qw / 2, it.y - qh / 2, it.z, it.x + qw / 2, it.y - qh / 2, it.z);
+    uv.push(u0, v1, u1, v1, u0, v0, u1, v0);
+    nor.push(0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1);
+    idx.push(b, b + 2, b + 1, b + 2, b + 3, b + 1);
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setIndex(idx);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, ...matOpts }));
+  parent.add(m); return m;
+}
+const _im = new THREE.Object3D();
+function instanced(geo, mat, list, parent) {   // list: [{x,y,z, rx, sx,sy,sz, color}]
+  const m = new THREE.InstancedMesh(geo, mat, list.length);
+  list.forEach((it, i) => {
+    _im.position.set(it.x, it.y, it.z); _im.rotation.set(it.rx || 0, 0, 0); _im.scale.set(it.sx || 1, it.sy || 1, it.sz || 1); _im.updateMatrix();
+    m.setMatrixAt(i, _im.matrix);
+    if (it.color) m.setColorAt(i, new THREE.Color(it.color));
+  });
+  parent.add(m); return m;
+}
+
 /* ---------------- materials ---------------- */
 const mStd = o => new THREE.MeshStandardMaterial(o);
 const M = {
@@ -623,6 +661,7 @@ const canGeo = new THREE.CylinderGeometry(0.033, 0.033, 0.112, 18);
 const canIM = new THREE.InstancedMesh(canGeo, mStd({ color: 0xffffff, roughness: 0.3, metalness: 0.55 }), 6 * RROWS * TPR * 5);
 const dm = new THREE.Object3D(), col = new THREE.Color();
 let ti = 0, ci = 0;
+const tagItems = [];
 for (let r = 0; r < RROWS; r++) {
   const yb = RY0 + r * RH;
   B(-0.56, 0.55, yb - 0.004, yb + 0.004, -0.33, 0.09, M.galv, rack);           // row shelf plate
@@ -630,7 +669,7 @@ for (let r = 0; r < RROWS; r++) {
     const x = RX0 + COLW * (c + 0.5), slot = c * 6 + r + 1;
     const prod = products[sel[slot].p];
     // slot number tag on the shelf front
-    const tag = Plane(0.05, 0.026, mStd({ map: ctex(96, 48, (g, w, h) => { g.fillStyle = '#f4f4ef'; g.fillRect(0, 0, w, h); g.fillStyle = sel[slot].hot ? '#d23a2a' : '#1d5cd3'; g.fillRect(0, 0, 10, h); g.fillStyle = '#1b1b1b'; g.font = '700 30px "Barlow Condensed",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(slot).padStart(2, '0'), w / 2 + 5, h / 2 + 1); }), roughness: 0.6 }), rack, x, yb + 0.018, 0.0915);
+    tagItems.push({ x, y: yb + 0.018, z: 0.0915, slot, hot: sel[slot].hot });
     for (let t = 0; t < TPR; t++) {
       const y = yb + 0.03 + t * (RH / TPR), a = t % 2 ? 0.12 : -0.12;
       dm.position.set(x, y, -0.12); dm.rotation.set(a, 0, 0); dm.scale.set(1, 1, 1); dm.updateMatrix();
@@ -649,6 +688,7 @@ for (let r = 0; r < RROWS; r++) {
 }
 B(-0.56, 0.55, 1.826, 1.834, -0.33, 0.09, M.galv, rack);
 canIM.count = ci;
+quadAtlas(tagItems, 6, 96, 48, (g, w, h, it) => { g.fillStyle = '#f4f4ef'; g.fillRect(0, 0, w, h); g.fillStyle = it.hot ? '#d23a2a' : '#1d5cd3'; g.fillRect(0, 0, 10, h); g.fillStyle = '#1b1b1b'; g.font = '700 30px "Barlow Condensed",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(it.slot).padStart(2, '0'), w / 2 + 5, h / 2 + 1); }, 0.05, 0.026, { roughness: 0.6 }, rack);
 rack.add(trayIM, lipIM, canIM);
 // insulated room partitions (L | C | R)
 [RX0 + COLW * 2, RX0 + COLW * 3].forEach(px => B(px - 0.012, px + 0.012, 0.30, 1.845, -0.34, 0.095, M.liner, rack));
@@ -763,36 +803,53 @@ const petGeo = new THREE.LatheGeometry([[0, 0], [0.03, 0], [0.033, 0.006], [0.03
 const liqGeo = new THREE.CylinderGeometry(0.0305, 0.0305, 0.14, 24);
 const petLabelGeo = new THREE.CylinderGeometry(0.0336, 0.0336, 0.07, 32, 1, true);
 const capGeo = new THREE.CylinderGeometry(0.0145, 0.0145, 0.018, 20);
-const btnMeshes = [];
-const btnFlash = [M.blueBtn, M.blueBtn, M.blueBtn, M.blueBtn, mStd({ color: 0xffffff, emissive: 0xfff2a8, emissiveIntensity: 2 }), M.blueBtn];
-function priceLabel(s) {
-  return mStd({ roughness: 0.5, map: ctex(128, 56, (g, w, h) => {
-    g.fillStyle = s.hot ? '#d23a2a' : '#1d5cd3'; g.fillRect(0, 0, w, 26);
-    g.fillStyle = '#fff'; g.font = `700 19px ${FJ}`; g.textAlign = 'center'; g.fillText(s.hot ? 'あったか〜い' : 'つめた〜い', w / 2, 20);
-    g.fillStyle = '#fbfbf7'; g.fillRect(0, 26, w, 30); g.fillStyle = '#111'; g.font = `700 27px ${FD}`; g.fillText(String(s.price), w / 2, 52);
-  }) });
-}
+const btnPos = [];
+const btnIds = [], btnList = [], faceList = [], priceItems = [], holderList = [];
+const canBy = {}, canTops = [], pets = [], liqs = [], petLabBy = {}, caps = [];
 rows.forEach((zr, r) => {
   B(-0.515, 0.375, zr - 0.066, zr + 0.03, 0.19, 0.336, M.paint, door, 0.004);
   for (let i = 0; i < 12; i++) {
     const x = -0.5 + pitch * (i + 0.5) + (i % 2 ? 0.004 : -0.004);
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.054, 0.02, 0.01), btnMats);
-    b.position.set(x, zr + 0.014, 0.341); door.add(b);
-    const n = (2 - r) * 12 + i + 1; b.userData.sel = n; btnMeshes[n] = b;
-    Plane(0.056, 0.0245, priceLabel(sel[n]), door, x, zr - 0.049, 0.3365);
-    const h = new THREE.Mesh(holderGeo, M.black); h.position.set(x, zr - 0.018, 0.337); h.rotation.x = Math.PI / 2; h.scale.set(1.25, 1, 0.75); door.add(h);
-    const p = sel[n].p, lab = mStd({ map: labelTex[p], roughness: 0.28, metalness: 0.35 });
+    const n = (2 - r) * 12 + i + 1;
+    btnIds.push(n); btnPos[n] = { x, y: zr + 0.014 };
+    btnList.push({ x, y: zr + 0.014, z: 0.341 });
+    faceList.push({ x, y: zr + 0.014, z: 0.3462 });
+    priceItems.push({ x, y: zr - 0.049, z: 0.3365, s: sel[n] });
+    holderList.push({ x, y: zr - 0.018, z: 0.337, rx: Math.PI / 2, sx: 1.25, sz: 0.75 });
+    const p = sel[n].p;
     if (r === 0) {
-      const pet = new THREE.Mesh(petGeo, M.pet); pet.position.set(x, zr + 0.03, 0.27); pet.renderOrder = 3; samples.add(pet);
-      const lq = new THREE.Mesh(liqGeo, mStd({ color: products[p].liq, roughness: 0.2, transparent: true, opacity: 0.85 })); lq.position.set(x, zr + 0.03 + 0.075, 0.27); samples.add(lq);
-      const pl = new THREE.Mesh(petLabelGeo, mStd({ map: labelTex[p], roughness: 0.4, side: THREE.DoubleSide })); pl.position.set(x, zr + 0.03 + 0.07, 0.27); samples.add(pl);
-      const cp = new THREE.Mesh(capGeo, M.cap); cp.position.set(x, zr + 0.03 + 0.207, 0.27); samples.add(cp);
+      pets.push({ x, y: zr + 0.03, z: 0.27 });
+      liqs.push({ x, y: zr + 0.03 + 0.075, z: 0.27, color: products[p].liq });
+      (petLabBy[p] = petLabBy[p] || []).push({ x, y: zr + 0.03 + 0.07, z: 0.27 });
+      caps.push({ x, y: zr + 0.03 + 0.207, z: 0.27 });
     } else {
-      const cn = new THREE.Mesh(canSampleGeo, [lab, M.canEnd, M.canEnd]); cn.position.set(x, zr + 0.03 + 0.0575, 0.27); samples.add(cn);
-      const tp = new THREE.Mesh(canTopGeo, M.canEnd); tp.position.set(x, zr + 0.03 + 0.119, 0.27); samples.add(tp);
+      (canBy[p] = canBy[p] || []).push({ x, y: zr + 0.03 + 0.0575, z: 0.27 });
+      canTops.push({ x, y: zr + 0.03 + 0.119, z: 0.27 });
     }
   }
 });
+const btnBox = instanced(new THREE.BoxGeometry(0.054, 0.02, 0.01), M.blueBtn, btnList, door);
+const btnFace = instanced(new THREE.PlaneGeometry(0.054, 0.02), M.btnFace, faceList, door);
+btnBox.userData.selIds = btnFace.userData.selIds = btnIds;
+const flashFace = new THREE.Mesh(new THREE.PlaneGeometry(0.054, 0.02), mStd({ color: 0xffffff, emissive: 0xfff2a8, emissiveIntensity: 2 }));
+flashFace.visible = false; door.add(flashFace);
+quadAtlas(priceItems, 12, 128, 56, (g, w, h, it) => {
+  const s = it.s;
+  g.fillStyle = s.hot ? '#d23a2a' : '#1d5cd3'; g.fillRect(0, 0, w, 26);
+  g.fillStyle = '#fff'; g.font = `700 19px ${FJ}`; g.textAlign = 'center'; g.fillText(s.hot ? 'あったか〜い' : 'つめた〜い', w / 2, 20);
+  g.fillStyle = '#fbfbf7'; g.fillRect(0, 26, w, 30); g.fillStyle = '#111'; g.font = `700 27px ${FD}`; g.fillText(String(s.price), w / 2, 52);
+}, 0.056, 0.0245, { roughness: 0.5 }, door);
+instanced(holderGeo, M.black, holderList, door);
+const labMat = {};
+Object.entries(canBy).forEach(([p, list]) => {
+  labMat[p] = labMat[p] || mStd({ map: labelTex[p], roughness: 0.28, metalness: 0.35 });
+  instanced(canSampleGeo, [labMat[p], M.canEnd, M.canEnd], list, samples);
+});
+instanced(canTopGeo, M.canEnd, canTops, samples);
+instanced(petGeo, M.pet, pets, samples).renderOrder = 3;
+instanced(liqGeo, mStd({ color: 0xffffff, roughness: 0.2, transparent: true, opacity: 0.85 }), liqs, samples);
+Object.entries(petLabBy).forEach(([p, list]) => instanced(petLabelGeo, mStd({ map: labelTex[p], roughness: 0.4, side: THREE.DoubleSide }), list, samples));
+instanced(capGeo, M.cap, caps, samples);
 
 // coin unit
 B(0.364, 0.514, 0.81, 1.02, 0.352, 0.387, M.silver, door, 0.006);
@@ -1008,10 +1065,11 @@ function openPart(p, showDrawer = true) {
   parts.forEach(q => { q.pin.classList.toggle('active', q === p); q.listBtn.setAttribute('aria-current', q === p); });
   renderDrawer(p, 0);
   drawer.hidden = false;
+  layoutChanged();
   $('#parts').classList.add('dimmed');
 }
 function closeDrawer() {
-  invalidate();
+  layoutChanged();
   drawer.hidden = true; S.current = null;
   parts.forEach(q => { q.pin.classList.remove('active'); q.listBtn.setAttribute('aria-current', false); });
   $('#parts').classList.remove('dimmed');
@@ -1023,7 +1081,7 @@ function renderDrawer(p, photoIdx) {
   drawer.innerHTML = `
     <div class="d-head"><span class="eyebrow">ขั้นที่ ${p.no}/${parts.length} · ${ZONES[p.zone]}</span><button class="icon-btn" id="dClose" type="button" aria-label="ปิดรายละเอียด">×</button></div>
     <div class="d-scroll">
-      <div class="d-title"><span class="d-no">${String(p.no).padStart(2, '0')}</span><div><h2>${p.th}</h2><p class="d-en">${p.en}</p></div></div>
+      <div class="d-title"><span class="d-no">${String(p.no).padStart(2, '0')}</span><div><h2>${p.en}</h2><p class="d-en">${p.th}</p></div></div>
       ${ph ? `<figure class="d-photo"><img src="img/${ph}.webp" alt="รูปจริง: ${p.th}" loading="lazy" onerror="this.closest('figure').remove()"><figcaption>รูปจริง ${photoIdx + 1}/${p.photos.length}</figcaption></figure>` : ''}
       ${p.photos.length > 1 ? `<div class="thumbs">${p.photos.map((f, i) => `<button type="button" data-i="${i}" aria-label="ภาพที่ ${i + 1}" aria-current="${i === photoIdx}"><img src="img/thumb/${f}.webp" alt="" loading="lazy" onerror="this.parentNode.remove()"></button>`).join('')}</div>` : ''}
       <p class="d-body">${p.body}</p>
@@ -1044,13 +1102,13 @@ document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => goView(b
 $('#specBtn').onclick = () => openPart(parts.find(p => p.id === 'nameplate'));
 const toggleBtn = (id, fn) => { const b = $(id); b.onclick = () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); fn(on); }; };
 toggleBtn('#pinsBtn', on => { S.pins = on; pinsEl.style.visibility = on ? '' : 'hidden'; invalidate(); });
-toggleBtn('#samplesBtn', on => { samples.visible = on; invalidate(); });
+toggleBtn('#samplesBtn', on => { samples.visible = on; renderer.shadowMap.needsUpdate = true; invalidate(); });
 toggleBtn('#spinBtn', on => { controls.autoRotate = on; });
 function togglePartsSheet(force) {
   const el = $('#parts'), open = force ?? !el.classList.contains('open');
   el.classList.toggle('open', open); $('#partsBtn').setAttribute('aria-pressed', open);
   if (open) closeDrawer();
-  invalidate();
+  layoutChanged();
 }
 $('#partsBtn').onclick = () => togglePartsSheet();
 window.addEventListener('keydown', e => {
@@ -1073,7 +1131,8 @@ canvas.addEventListener('pointerup', e => {
   ray.setFromCamera(ndc, camera);
   const hits = ray.intersectObjects([door, inner], true);
   if (!hits.length) return;
-  if (hits[0].object.userData.sel) { vend(hits[0].object.userData.sel); hideHint(); return; }
+  const hitSel = hits[0].object.userData.selIds ? hits[0].object.userData.selIds[hits[0].instanceId] : 0;
+  if (hitSel) { vend(hitSel); hideHint(); return; }
   let o = hits[0].object, isInner = false;
   while (o) { if (o === inner) { isInner = true; break; } if (o === door) break; o = o.parent; }
   if (isInner) setInner(S.innerT !== 1); else setDoor(S.doorT !== 1);
@@ -1090,7 +1149,8 @@ function toast(html) {
 }
 function vend(n) {
   const s = sel[n], k = Math.floor((n - 1) / 6), x = RX0 + COLW * (k + 0.5);
-  const b = btnMeshes[n]; b.material = btnFlash; setTimeout(() => { b.material = btnMats; }, 900);
+  flashFace.position.set(btnPos[n].x, btnPos[n].y, 0.3464); flashFace.visible = true; invalidate();
+  clearTimeout(vend.t); vend.t = setTimeout(() => { flashFace.visible = false; invalidate(); }, 900);
   setLCD(String(s.price)); setTimeout(() => setLCD('0'), 2600);
   const can = new THREE.Mesh(canGeo, mStd({ color: products[s.p].bg, roughness: 0.3, metalness: 0.55, transparent: true }));
   can.rotation.z = Math.PI / 2; can.castShadow = true; vm.add(can);
@@ -1137,7 +1197,7 @@ function resize() {
   camera.aspect = w / h;
   camera.fov = w / h < 0.8 ? 52 : 36;
   camera.updateProjectionMatrix();
-  invalidate();
+  layoutChanged();
 }
 new ResizeObserver(resize).observe(canvas);
 resize();
@@ -1174,16 +1234,19 @@ function updatePins() {
   }
   return moving;
 }
-const _off = { x: 0, y: 0 };
+const _off = { x: 0, y: 0 }, _offT = { x: 0, y: 0 };
 function frameFree(k) {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   let L = 0, Rr = w, T = 0, Bt = h;
+  if (performance.now() < layoutUntil) {
   const bar = $('.bar').getBoundingClientRect(); Bt = Math.min(Bt, bar.top);
   if (w <= 760) T = $('.hdr').getBoundingClientRect().bottom;
   if (!drawer.hidden) { const r = drawer.getBoundingClientRect(); if (r.top > h * 0.3) Bt = Math.min(Bt, r.top); else Rr = Math.min(Rr, r.left); }
   const pe = $('#parts'), pr = pe.getBoundingClientRect();
   if (+getComputedStyle(pe).opacity > 0.5 && pr.width) { if (pr.top > h * 0.3) Bt = Math.min(Bt, pr.top); else L = Math.max(L, pr.right); }
-  const tx = w / 2 - (L + Rr) / 2, ty = h / 2 - (T + Bt) / 2;
+  }
+  if (performance.now() < layoutUntil) { _offT.x = w / 2 - (L + Rr) / 2; _offT.y = h / 2 - (T + Bt) / 2; }
+  const tx = _offT.x, ty = _offT.y;
   _off.x += (tx - _off.x) * k; _off.y += (ty - _off.y) * k;
   if (Math.abs(_off.x) < 0.5 && Math.abs(_off.y) < 0.5) camera.clearViewOffset();
   else camera.setViewOffset(w, h, Math.round(_off.x), Math.round(_off.y), w, h);
@@ -1216,6 +1279,7 @@ function tick() {
   updateVending(dt);
   const offMoving = frameFree(1 - Math.exp(-dt * 8));
   const orbit = controls.update();
+  if (doorMoving || first) renderer.shadowMap.needsUpdate = true;
   if (dirty || orbit || flying || doorMoving || vendingNow || offMoving || pinsMoving || controls.autoRotate) {
     renderer.render(scene, camera);
     pinsMoving = updatePins();
@@ -1368,7 +1432,7 @@ window.STEPS = [
   const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   el.querySelector('.l-list').innerHTML = STEPS.map((s, i) => `
     <section class="l-step" id="s-${s.id}">
-      <div class="l-head"><span class="l-no">${String(i + 1).padStart(2, '0')}</span><div><h2>${esc(s.th)}</h2><p>${esc(s.en)}</p></div></div>
+      <div class="l-head"><span class="l-no">${String(i + 1).padStart(2, '0')}</span><div><h2>${esc(s.en)}</h2><p>${esc(s.th)}</p></div></div>
       <p class="l-body">${esc(s.body)}</p>
       ${s.photos.length ? `<div class="l-photos">${s.photos.map(f => `<a href="img/${f}.webp" target="_blank" rel="noopener"><img src="img/${f}.webp" alt="รูปจริง: ${esc(s.th)}" loading="lazy" onerror="this.parentNode.remove()"></a>`).join('')}</div>` : ''}
     </section>`).join('');
