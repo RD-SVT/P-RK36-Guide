@@ -131,11 +131,34 @@ a.btn{color:var(--fg)}
 .ld b{display:block;font-family:var(--f-mono);font-size:18px;font-weight:500}
 .ld span{color:var(--muted);font-size:13px}
 
+/* loading: way out to Lite */
+.ld span{display:block}
+.ld-lite{margin-top:16px}
+/* Lite mode (photo list, no 3D) */
+html.is-lite{height:auto;overflow:auto}
+html.is-lite body{height:auto;overflow:visible}
+#lite{max-width:720px;margin:0 auto;padding:0 16px 48px}
+.l-top{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;background:var(--bg);border-bottom:1px solid var(--line)}
+.l-brand{display:flex;gap:12px;align-items:center;min-width:0}
+.l-brand>div:last-child{min-width:0}
+.l-brand .eyebrow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.l-brand h1{margin:2px 0 0;font-family:var(--f-mono);font-weight:500;font-size:16px;line-height:20px}
+.l-actions{display:flex;gap:8px;flex:none}
+.l-list{display:flex;flex-direction:column;gap:12px;padding-top:16px}
+.l-step{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;scroll-margin-top:76px}
+.l-step.on{border-color:var(--accent);box-shadow:inset 2px 0 0 var(--accent)}
+.l-head{display:flex;gap:12px;align-items:baseline}
+.l-no{font-family:var(--f-mono);font-size:20px;font-weight:500;color:var(--accent);font-variant-numeric:tabular-nums}
+.l-head h2{margin:0;font-size:16px;font-weight:500}
+.l-head p{margin:0;font-size:13px;color:var(--muted)}
+.l-body{margin:8px 0 0;font-size:14px}
+.l-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:12px}
+.l-photos img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:var(--chip);display:block}
 @media (max-width:1100px){
   .parts.dimmed{opacity:0;pointer-events:none}
 }
 @media (max-width:760px){
-  .hdr{padding:8px 12px 8px 8px;max-width:calc(100% - 112px)}
+  .hdr{padding:8px 12px 8px 8px;max-width:calc(100% - 196px)}
   .hdr h1{font-size:15px;line-height:20px}
   #specBtn{display:none}
   .bar .btn[data-view],#pinsBtn,#samplesBtn,#spinBtn,.bar .sep{display:none}
@@ -183,6 +206,7 @@ a.btn{color:var(--fg)}
       <div><b>1,693</b><span> L</span></div>
     </div>
     <button class="btn panel" id="specBtn" type="button">สเปก <small>SPECS</small></button>
+    <button class="btn panel" id="liteBtn" type="button" onclick="setGuideMode('lite')">แบบรูป</button>
     <a class="btn panel" id="cdbBtn" href="https://rd-svt.github.io/Can-Database-CDB2/" title="กลับไปหน้า Can Database">← CDB</a>
   </div>
 
@@ -214,12 +238,20 @@ a.btn{color:var(--fg)}
 
   <aside class="drawer panel" id="drawer" hidden aria-live="polite"></aside>
 
-  <div id="loading"><div class="ld"><b>P-RK36-HPAPER</b><span id="ldMsg">กำลังประกอบโมเดล 3D…</span></div></div>
+  <div id="loading"><div class="ld"><b>P-RK36-HPAPER</b><span id="ldMsg">กำลังโหลดโมเดล 3D…</span><button class="btn panel ld-lite" type="button" onclick="setGuideMode('lite')">เน็ตช้า? ดูแบบรูป</button></div></div>
 </div>
+
+<main id="lite" hidden>
+  <header class="l-top">
+    <div class="l-brand"><div class="hdr-tag" aria-hidden="true">S</div><div><div class="eyebrow">SUN VENDING · คู่มือถ่ายรูป</div><h1>P-RK36-HPAPER</h1></div></div>
+    <div class="l-actions"><button class="btn panel" id="to3d" type="button" onclick="setGuideMode('3d')">ดูแบบ 3D</button><a class="btn panel" id="liteCdb" href="https://rd-svt.github.io/Can-Database-CDB2/">← CDB</a></div>
+  </header>
+  <div class="l-list"></div>
+</main>
 
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
 } }
 </script>
@@ -229,7 +261,7 @@ a.btn{color:var(--fg)}
     if (m && !document.getElementById('loading').classList.contains('done')) m.textContent = 'โหลดโมเดลไม่สำเร็จ: ' + (e.message || 'unknown error');
   });
 </script>
-<script type="module">
+<script type="text/plain" id="m3d">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -237,6 +269,8 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 
 const $ = s => document.querySelector(s);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let dirty = true;                       // render on demand: set when the picture must change
+const invalidate = () => { dirty = true; };
 
 /* ---------------- renderer / scene ---------------- */
 const canvas = $('#c');
@@ -247,7 +281,8 @@ try {
   $('#ldMsg').textContent = 'เบราว์เซอร์นี้ไม่รองรับ WebGL จึงแสดงโมเดล 3D ไม่ได้';
   throw e;
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const PHONE = matchMedia('(max-width:760px), (pointer:coarse)').matches;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, PHONE ? 1.5 : 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.95;
 renderer.shadowMap.enabled = true;
@@ -267,13 +302,14 @@ controls.minDistance = 0.35;
 controls.maxDistance = 7;
 controls.maxPolarAngle = Math.PI * 0.495;
 controls.autoRotateSpeed = 0.6;
+controls.addEventListener('change', invalidate);
 
 /* ---------------- lights ---------------- */
 scene.add(new THREE.HemisphereLight(0xf2f6fa, 0x5d6266, 0.55));
 const sun = new THREE.DirectionalLight(0xffffff, 1.9);
 sun.position.set(2.6, 4.6, 3.6);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(PHONE ? 1024 : 2048, PHONE ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -2, right: 2, top: 2.6, bottom: -1, near: 0.5, far: 12 });
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
 scene.add(sun);
@@ -437,7 +473,7 @@ function setLCD(txt) {
   const g = lcdG, w = 128, h = 32;
   g.fillStyle = '#051208'; g.fillRect(0, 0, w, h);
   g.fillStyle = '#74ff9a'; g.font = '700 24px monospace'; g.textAlign = 'right'; g.fillText(txt, w - 10, 25);
-  lcdTex.needsUpdate = true;
+  lcdTex.needsUpdate = true; invalidate();
 }
 setLCD('0');
 const btnTex = ctex(128, 48, (g, w, h) => {
@@ -844,39 +880,29 @@ const SPECS = [
 const parts = [
   // ลำดับและชื่อตรงกับขั้นถ่ายรูปใน CDB (PS_BASE) — id = key ของ CDB
   { id: 'nameplate', zone: 'ext', parent: vm, pos: [HX + 0.004, 0.42, -0.16], n: [1, 0, 0], need: {}, off: [0.75, 0.12, 0.3],
-    th: 'ป้ายข้อมูลหลักของตู้', en: 'Nameplate', photos: ['nameplate'], specs: true,
-    body: 'ถ่ายป้ายโลหะข้างตู้ให้เต็มเฟรม อ่านรุ่น (形名) และเลขเครื่อง (製造番号) ได้ชัด' },
+    specs: true },
   { id: 'other_nameplate', zone: 'cab', parent: inner, pos: [0.45, 0.68, 0.16], n: [0, 0, 1], need: { door: 1 }, view: { dist: 0.7, lift: 0.05, side: 0 }, approx: true,
-    th: 'ป้ายข้อมูลเพิ่มเติม', en: 'Other Nameplate', photos: [],
-    body: 'ป้ายหรือสติกเกอร์อื่นที่มีรหัสรุ่น เช่น ป้ายบนประตูใน ถ่ายทีละป้าย' },
+    },
   { id: 'outside', zone: 'ext', parent: door, pos: [-0.3, 0.62, 0.37], n: [0, 0, 1], need: {}, view: { dist: 3.1, lift: 0.35, side: 0.9 },
-    th: 'ภาพรวมภายนอกตู้', en: 'Outside', photos: ['outside'],
-    body: 'ปิดประตู ถ่ายหน้าตู้ให้เห็นทั้งตู้ ตั้งแต่ด้านบนถึงขาตั้ง' },
+    },
   { id: 'button', zone: 'ext', parent: door, pos: [-0.07, 0.88, 0.35], n: [0, 0, 1], need: {}, view: { dist: 0.9, lift: 0.15, side: 0.25 },
-    th: 'แผงปุ่มกดควบคุม', en: 'Button Panel', photos: ['buttonpanel'],
-    body: 'เปิดกระจกตู้โชว์ ยกรางปุ่มขึ้น แล้วถ่ายด้านหลังรางให้เห็นหลอด LED และสายไฟ' },
+    },
   { id: 'breaker', zone: 'mr', parent: vm, pos: [0.495, 0.2, -0.085], n: [0, 0, 1], need: { door: 1 }, off: [-0.08, 0.09, 0.8], approx: true,
-    th: 'เบรกเกอร์ / Circuit Breaker', en: 'Breaker', photos: ['breaker-1', 'breaker-2', 'breaker-3', 'breaker-4'],
-    body: 'ถ่ายกล่องเบรกเกอร์ในห้องเครื่อง 4 รูป: ตำแหน่งในตู้ กล่องที่ถอดออก ด้านในกล่อง และแผนผังบนฝา' },
+    },
   { id: 'door_side', zone: 'door', parent: door, pos: [0.15, 1.32, 0.16], n: [0, 0, -1], need: { door: 1 }, view: { dist: 3.7, lift: -0.37, side: 0 }, look: [0, -0.37, 0],
-    th: 'ด้านในประตูตู้', en: 'Door Side', photos: ['doorside', 'battery'],
-    body: 'เปิดประตูหน้า ถ่ายด้านในให้เห็นทั้งบาน แล้วถ่ายแบตเตอรี่ที่อยู่ล่างสุดเพิ่มอีกรูป' },
+    },
   { id: 'master_box', zone: 'door', parent: door, pos: [-0.18, 0.56, 0.22], n: [0, 0, -1], need: { door: 1 }, view: { dist: 0.85, lift: 0.08, side: 0 },
-    th: 'กล่องควบคุมหลักและรีโมต', en: 'Master Box & Remote', photos: ['masterbox'],
-    body: 'ถ่ายกล่องสีครีม (สวิตช์แดง) พร้อมรีโมตและแผงปุ่มสีดำด้านล่างในรูปเดียว' },
+    },
   { id: 'boards_inside', zone: 'mr', parent: vm, pos: [0.315, 0.185, 0.092], n: [0, 0, 1], need: { door: 1 }, off: [0.05, 0.08, 0.72], approx: true,
-    th: 'บอร์ดภายในกล่องไฟ', en: 'Boards Inside Power Box', photos: ['board-relay', 'board-inverter'],
-    body: 'ถ่ายบอร์ดในห้องเครื่องทีละแผ่น คือบอร์ดรีเลย์กับบอร์ดอินเวอร์เตอร์ ให้อ่านรหัสบอร์ดได้' },
+    },
   { id: 'inventory_side', zone: 'cab', parent: vm, pos: [0.0, 1.45, 0.1], n: [0, 0, 1], need: { door: 1 }, off: [0.45, 0.1, 3.6], look: [0, -0.5, 0], approx: true,
-    th: 'ด้านช่องสินค้า', en: 'Inventory Side', photos: ['rack'],
-    body: 'เปิดประตูหน้า ถ่ายห้องเก็บสินค้าทั้งหมด ให้เห็นแร็คด้านบนและพัดลม 4 ตัวด้านล่าง' },
+    },
   { id: 'master_board', zone: 'mr', parent: vm, pos: [0.564, 0.185, 0.035], n: [-1, 0, 0], need: { door: 1 }, off: [-0.62, 0.03, 0.7], approx: true,
-    th: 'บอร์ดควบคุมหลัก', en: 'Master Board', photos: ['masterboard'],
-    body: 'ถ่ายบอร์ดบนผนังขวาของห้องเครื่องให้เห็นทั้งแผ่น รหัสบอร์ดขึ้นต้นด้วย CC-CS' },
+    },
   { id: 'compressor', zone: 'mr', parent: vm, pos: [-0.36, 0.17, -0.06], n: [0, 0, 1], need: { door: 1 }, off: [0.38, 0.12, 0.95], approx: true,
-    th: 'คอมเพรสเซอร์ระบบทำความเย็น', en: 'Compressor', photos: ['compressor'],
-    body: 'ถ่ายฉลากบนคอมเพรสเซอร์ให้อ่านรุ่นได้ เครื่องนี้คือ EFI120E13DCH ใช้ R600a' },
+    },
 ];
+parts.forEach(p => Object.assign(p, window.STEPS.find(s => s.id === p.id)));
 parts.forEach((p, i) => {
   p.no = i + 1;
   p.anchor = new THREE.Object3D(); p.anchor.position.set(...p.pos); p.parent.add(p.anchor);
@@ -898,6 +924,7 @@ function setInner(open) {
   syncButtons();
 }
 function syncButtons() {
+  invalidate();
   const o = S.doorT === 1;
   $('#doorBtn').setAttribute('aria-pressed', o);
   $('#doorTxt').textContent = o ? 'ปิดประตู' : 'เปิดประตู';
@@ -984,6 +1011,7 @@ function openPart(p, showDrawer = true) {
   $('#parts').classList.add('dimmed');
 }
 function closeDrawer() {
+  invalidate();
   drawer.hidden = true; S.current = null;
   parts.forEach(q => { q.pin.classList.remove('active'); q.listBtn.setAttribute('aria-current', false); });
   $('#parts').classList.remove('dimmed');
@@ -996,8 +1024,8 @@ function renderDrawer(p, photoIdx) {
     <div class="d-head"><span class="eyebrow">ขั้นที่ ${p.no}/${parts.length} · ${ZONES[p.zone]}</span><button class="icon-btn" id="dClose" type="button" aria-label="ปิดรายละเอียด">×</button></div>
     <div class="d-scroll">
       <div class="d-title"><span class="d-no">${String(p.no).padStart(2, '0')}</span><div><h2>${p.th}</h2><p class="d-en">${p.en}</p></div></div>
-      ${ph ? `<figure class="d-photo"><img src="img/${ph}.jpg" alt="รูปจริง: ${p.th}" loading="lazy" onerror="this.closest('figure').remove()"><figcaption>รูปจริง ${photoIdx + 1}/${p.photos.length}</figcaption></figure>` : ''}
-      ${p.photos.length > 1 ? `<div class="thumbs">${p.photos.map((f, i) => `<button type="button" data-i="${i}" aria-label="ภาพที่ ${i + 1}" aria-current="${i === photoIdx}"><img src="img/${f}.jpg" alt="" onerror="this.parentNode.remove()"></button>`).join('')}</div>` : ''}
+      ${ph ? `<figure class="d-photo"><img src="img/${ph}.webp" alt="รูปจริง: ${p.th}" loading="lazy" onerror="this.closest('figure').remove()"><figcaption>รูปจริง ${photoIdx + 1}/${p.photos.length}</figcaption></figure>` : ''}
+      ${p.photos.length > 1 ? `<div class="thumbs">${p.photos.map((f, i) => `<button type="button" data-i="${i}" aria-label="ภาพที่ ${i + 1}" aria-current="${i === photoIdx}"><img src="img/thumb/${f}.webp" alt="" loading="lazy" onerror="this.parentNode.remove()"></button>`).join('')}</div>` : ''}
       <p class="d-body">${p.body}</p>
       ${specs}
       ${p.approx ? '<p class="d-note">ตำแหน่งในโมเดลเป็นค่าประมาณ</p>' : ''}
@@ -1015,13 +1043,14 @@ $('#innerBtn').onclick = () => setInner(S.innerT !== 1);
 document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => goView(b.dataset.view));
 $('#specBtn').onclick = () => openPart(parts.find(p => p.id === 'nameplate'));
 const toggleBtn = (id, fn) => { const b = $(id); b.onclick = () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); fn(on); }; };
-toggleBtn('#pinsBtn', on => { S.pins = on; pinsEl.style.visibility = on ? '' : 'hidden'; });
-toggleBtn('#samplesBtn', on => { samples.visible = on; });
+toggleBtn('#pinsBtn', on => { S.pins = on; pinsEl.style.visibility = on ? '' : 'hidden'; invalidate(); });
+toggleBtn('#samplesBtn', on => { samples.visible = on; invalidate(); });
 toggleBtn('#spinBtn', on => { controls.autoRotate = on; });
 function togglePartsSheet(force) {
   const el = $('#parts'), open = force ?? !el.classList.contains('open');
   el.classList.toggle('open', open); $('#partsBtn').setAttribute('aria-pressed', open);
   if (open) closeDrawer();
+  invalidate();
 }
 $('#partsBtn').onclick = () => togglePartsSheet();
 window.addEventListener('keydown', e => {
@@ -1094,6 +1123,7 @@ function applyTheme() {
   const bg = new THREE.Color(cs.getPropertyValue('--scene').trim() || '#dde2e5');
   scene.background = bg; scene.fog = new THREE.Fog(bg, 7, 18);
   M.floor.color.set(cs.getPropertyValue('--floor-tint').trim() || '#ffffff');
+  invalidate();
 }
 applyTheme();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
@@ -1107,6 +1137,7 @@ function resize() {
   camera.aspect = w / h;
   camera.fov = w / h < 0.8 ? 52 : 36;
   camera.updateProjectionMatrix();
+  invalidate();
 }
 new ResizeObserver(resize).observe(canvas);
 resize();
@@ -1118,7 +1149,8 @@ const smooth = t => t * t * (3 - 2 * t);
 const _cam = new THREE.Vector3(), _w = new THREE.Vector3(), _proj = new THREE.Vector3();
 let first = true;
 function updatePins() {
-  if (!S.pins) return;
+  if (!S.pins) return false;
+  let moving = false;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   camera.getWorldPosition(_cam);
   for (const p of parts) {
@@ -1133,12 +1165,14 @@ function updatePins() {
     if (_proj.z > 1) show = false;
     const target = show ? 1 : 0;
     p.vis += (target - p.vis) * 0.25;
+    if (Math.abs(target - p.vis) > 0.01) moving = true; else p.vis = target;
     const x = (_proj.x * 0.5 + 0.5) * w, y = (-_proj.y * 0.5 + 0.5) * h;
     p.pin.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
     p.pin.style.opacity = p.vis.toFixed(2);
     p.pin.style.pointerEvents = p.vis > 0.5 ? 'auto' : 'none';
     p.pin.tabIndex = p.vis > 0.5 ? 0 : -1;
   }
+  return moving;
 }
 const _off = { x: 0, y: 0 };
 function frameFree(k) {
@@ -1153,16 +1187,24 @@ function frameFree(k) {
   _off.x += (tx - _off.x) * k; _off.y += (ty - _off.y) * k;
   if (Math.abs(_off.x) < 0.5 && Math.abs(_off.y) < 0.5) camera.clearViewOffset();
   else camera.setViewOffset(w, h, Math.round(_off.x), Math.round(_off.y), w, h);
+  return Math.abs(tx - _off.x) > 0.5 || Math.abs(ty - _off.y) > 0.5;
 }
+let pinsMoving = true, wasIdle = false;
 function tick() {
-  const dt = Math.min(clock.getDelta(), 0.1);
+  requestAnimationFrame(tick);
+  let dt = Math.min(clock.getDelta(), 0.1);
+  if (wasIdle) dt = 1 / 60;                       // no time jump after a pause
   const k = 1 - Math.exp(-dt * (reduceMotion ? 30 : 2.8));
-  S.door += (S.doorT - S.door) * k;
-  S.inner += (S.innerT - S.inner) * k;
+  const doorMoving = Math.abs(S.doorT - S.door) > 1e-3 || Math.abs(S.innerT - S.inner) > 1e-3;
+  if (doorMoving) {
+    S.door += (S.doorT - S.door) * k;
+    S.inner += (S.innerT - S.inner) * k;
+  } else { S.door = S.doorT; S.inner = S.innerT; }
   doorPivot.rotation.y = -smooth(Math.min(1, Math.max(0, S.door))) * DOOR_MAX;
   innerPivot.rotation.y = -smooth(Math.min(1, Math.max(0, S.inner))) * INNER_MAX;
   cabLight.intensity = S.door * 1.1;
   mrLight.intensity = S.door * 0.5;
+  const flying = !!fly;
   if (fly) {
     fly.u = Math.min(1, fly.u + dt / fly.dur);
     const e = fly.u < 0.5 ? 4 * fly.u ** 3 : 1 - (-2 * fly.u + 2) ** 3 / 2;
@@ -1170,13 +1212,16 @@ function tick() {
     controls.target.lerpVectors(fly.t0, fly.t1, e);
     if (fly.u >= 1) fly = null;
   }
+  const vendingNow = vending.length > 0;
   updateVending(dt);
-  frameFree(1 - Math.exp(-dt * 8));
-  controls.update();
-  renderer.render(scene, camera);
-  updatePins();
-  if (first) { first = false; $('#loading').classList.add('done'); }
-  requestAnimationFrame(tick);
+  const offMoving = frameFree(1 - Math.exp(-dt * 8));
+  const orbit = controls.update();
+  if (dirty || orbit || flying || doorMoving || vendingNow || offMoving || pinsMoving || controls.autoRotate) {
+    renderer.render(scene, camera);
+    pinsMoving = updatePins();
+    dirty = false; wasIdle = false;
+    if (first) { first = false; $('#loading').classList.add('done'); }
+  } else wasIdle = true;                          // nothing changed: skip the frame (saves battery)
 }
 tick();
 
@@ -1191,8 +1236,154 @@ function openFromHash() {
 window.addEventListener('hashchange', openFromHash);
 setTimeout(openFromHash, 300);
 // "← CDB": if CDB opened this tab, just close it so the CDB tab (and its unsaved form) stays as it was
-$('#cdbBtn').addEventListener('click', e => { if (window.opener && !window.opener.closed) { e.preventDefault(); window.close(); } });
+$('#cdbBtn').addEventListener('click', window.__backToCdb);
 </script>
+<script>
+// ---- steps (same order and keys as the photo steps in CDB) ----
+window.STEPS = [
+ {
+  "id": "nameplate",
+  "th": "ป้ายข้อมูลหลักของตู้",
+  "en": "Nameplate",
+  "photos": [
+   "nameplate"
+  ],
+  "body": "ถ่ายป้ายโลหะข้างตู้ให้เต็มเฟรม อ่านรุ่น (形名) และเลขเครื่อง (製造番号) ได้ชัด"
+ },
+ {
+  "id": "other_nameplate",
+  "th": "ป้ายข้อมูลเพิ่มเติม",
+  "en": "Other Nameplate",
+  "photos": [],
+  "body": "ป้ายหรือสติกเกอร์อื่นที่มีรหัสรุ่น เช่น ป้ายบนประตูใน ถ่ายทีละป้าย"
+ },
+ {
+  "id": "outside",
+  "th": "ภาพรวมภายนอกตู้",
+  "en": "Outside",
+  "photos": [
+   "outside"
+  ],
+  "body": "ปิดประตู ถ่ายหน้าตู้ให้เห็นทั้งตู้ ตั้งแต่ด้านบนถึงขาตั้ง"
+ },
+ {
+  "id": "button",
+  "th": "แผงปุ่มกดควบคุม",
+  "en": "Button Panel",
+  "photos": [
+   "buttonpanel"
+  ],
+  "body": "เปิดกระจกตู้โชว์ ยกรางปุ่มขึ้น แล้วถ่ายด้านหลังรางให้เห็นหลอด LED และสายไฟ"
+ },
+ {
+  "id": "breaker",
+  "th": "เบรกเกอร์ / Circuit Breaker",
+  "en": "Breaker",
+  "photos": [
+   "breaker-1",
+   "breaker-2",
+   "breaker-3",
+   "breaker-4"
+  ],
+  "body": "ถ่ายกล่องเบรกเกอร์ในห้องเครื่อง 4 รูป: ตำแหน่งในตู้ กล่องที่ถอดออก ด้านในกล่อง และแผนผังบนฝา"
+ },
+ {
+  "id": "door_side",
+  "th": "ด้านในประตูตู้",
+  "en": "Door Side",
+  "photos": [
+   "doorside",
+   "battery"
+  ],
+  "body": "เปิดประตูหน้า ถ่ายด้านในให้เห็นทั้งบาน แล้วถ่ายแบตเตอรี่ที่อยู่ล่างสุดเพิ่มอีกรูป"
+ },
+ {
+  "id": "master_box",
+  "th": "กล่องควบคุมหลักและรีโมต",
+  "en": "Master Box & Remote",
+  "photos": [
+   "masterbox"
+  ],
+  "body": "ถ่ายกล่องสีครีม (สวิตช์แดง) พร้อมรีโมตและแผงปุ่มสีดำด้านล่างในรูปเดียว"
+ },
+ {
+  "id": "boards_inside",
+  "th": "บอร์ดภายในกล่องไฟ",
+  "en": "Boards Inside Power Box",
+  "photos": [
+   "board-relay",
+   "board-inverter"
+  ],
+  "body": "ถ่ายบอร์ดในห้องเครื่องทีละแผ่น คือบอร์ดรีเลย์กับบอร์ดอินเวอร์เตอร์ ให้อ่านรหัสบอร์ดได้"
+ },
+ {
+  "id": "inventory_side",
+  "th": "ด้านช่องสินค้า",
+  "en": "Inventory Side",
+  "photos": [
+   "rack"
+  ],
+  "body": "เปิดประตูหน้า ถ่ายห้องเก็บสินค้าทั้งหมด ให้เห็นแร็คด้านบนและพัดลม 4 ตัวด้านล่าง"
+ },
+ {
+  "id": "master_board",
+  "th": "บอร์ดควบคุมหลัก",
+  "en": "Master Board",
+  "photos": [
+   "masterboard"
+  ],
+  "body": "ถ่ายบอร์ดบนผนังขวาของห้องเครื่องให้เห็นทั้งแผ่น รหัสบอร์ดขึ้นต้นด้วย CC-CS"
+ },
+ {
+  "id": "compressor",
+  "th": "คอมเพรสเซอร์ระบบทำความเย็น",
+  "en": "Compressor",
+  "photos": [
+   "compressor"
+  ],
+  "body": "ถ่ายฉลากบนคอมเพรสเซอร์ให้อ่านรุ่นได้ เครื่องนี้คือ EFI120E13DCH ใช้ R600a"
+ }
+];
+// ---- 3D or Lite ----
+(function () {
+  const q = new URLSearchParams(location.search).get('mode');
+  let pref = null; try { pref = localStorage.getItem('guideMode'); } catch (e) {}
+  const c = navigator.connection || {};
+  const slowNet = !!(c.saveData || /(^|-)2g$/.test(c.effectiveType || ''));
+  let gl = false; try { const t = document.createElement('canvas'); gl = !!(t.getContext('webgl2') || t.getContext('webgl')); } catch (e) {}
+  const mode = q === 'lite' || q === '3d' ? q : pref || (slowNet || !gl ? 'lite' : '3d');
+  window.setGuideMode = m => { try { localStorage.setItem('guideMode', m); } catch (e) {} location.replace(location.pathname + '?mode=' + m + location.hash); };
+  const backToCdb = e => { if (window.opener && !window.opener.closed) { e.preventDefault(); window.close(); } };
+  window.__backToCdb = backToCdb;
+  if (mode === '3d' && gl) {
+    const s = document.createElement('script'); s.type = 'module';
+    s.textContent = document.getElementById('m3d').textContent;
+    document.body.appendChild(s);
+    return;
+  }
+  // Lite: photo list, no 3D download
+  document.getElementById('app').hidden = true;
+  document.documentElement.classList.add('is-lite');
+  const el = document.getElementById('lite');
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  el.querySelector('.l-list').innerHTML = STEPS.map((s, i) => `
+    <section class="l-step" id="s-${s.id}">
+      <div class="l-head"><span class="l-no">${String(i + 1).padStart(2, '0')}</span><div><h2>${esc(s.th)}</h2><p>${esc(s.en)}</p></div></div>
+      <p class="l-body">${esc(s.body)}</p>
+      ${s.photos.length ? `<div class="l-photos">${s.photos.map(f => `<a href="img/${f}.webp" target="_blank" rel="noopener"><img src="img/${f}.webp" alt="รูปจริง: ${esc(s.th)}" loading="lazy" onerror="this.parentNode.remove()"></a>`).join('')}</div>` : ''}
+    </section>`).join('');
+  el.hidden = false;
+  if (!gl) el.querySelector('#to3d').hidden = true;
+  el.querySelector('#liteCdb').addEventListener('click', backToCdb);
+  const go = () => {
+    el.querySelectorAll('.l-step.on').forEach(n => n.classList.remove('on'));
+    const t = document.getElementById('s-' + decodeURIComponent(location.hash.slice(1)));
+    if (t) { t.classList.add('on'); t.scrollIntoView({ block: 'start' }); }
+  };
+  window.addEventListener('hashchange', go); go();
+})();
+</script>
+
 
 </body>
 </html>
