@@ -1,0 +1,1198 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}</style>
+<title>P-RK36 3D Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-bleed 3D stage; floating service-manual panels (header, parts index, control bar, detail drawer) */
+:root{
+  /* same tokens as Can Database (CDB) — light only */
+  --bg:#f7f7f6; --scene:#efefed; --floor-tint:#ffffff;
+  --panel:#ffffff; --panel-solid:#ffffff;
+  --fg:#171717; --muted:#737373; --t2:#525252; --line:rgba(23,23,23,.08); --line2:rgba(23,23,23,.14); --chip:#f1f1f0;
+  --accent:#C8102E; --accent-fg:#ffffff; --blue:#171717;
+  --shadow:0 8px 24px rgba(0,0,0,.06);
+  --f-display:"IBM Plex Sans Thai","IBM Plex Sans",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans Thai","IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+}
+html,body{height:100%}
+body{margin:0;overflow:hidden;background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+#app{position:fixed;inset:0}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#c.grabbing{cursor:grabbing}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+
+/* header */
+.hdr{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));padding:12px 16px 12px 14px;display:flex;gap:12px;align-items:stretch;max-width:calc(100% - 32px)}
+.hdr-tag{width:32px;height:32px;border-radius:8px;background:var(--accent);color:#fff;font-size:17px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none;align-self:center}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:0;color:var(--muted)}
+.hdr h1{margin:2px 0 0;font-family:var(--f-mono);font-weight:500;font-size:18px;line-height:24px}
+.hdr p{margin:4px 0 0;color:var(--muted);font-size:13px}
+
+/* spec button top-right */
+.top-right{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:8px;align-items:center}
+.stat{font-family:var(--f-mono);font-size:12px;padding:8px 12px;display:flex;gap:14px;font-variant-numeric:tabular-nums}
+.stat b{font-weight:500}
+.stat span{color:var(--muted)}
+
+/* parts index */
+.parts{position:absolute;left:max(16px,env(safe-area-inset-left,0px));top:calc(124px + env(safe-area-inset-top,0px));bottom:calc(92px + env(safe-area-inset-bottom,0px));width:268px;display:flex;flex-direction:column;overflow:hidden}
+.parts-head{display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 8px;border-bottom:1px solid var(--line)}
+.parts-head .eyebrow{white-space:nowrap}
+.parts-head h2{margin:0;font-size:15px;font-weight:600}
+.parts-list{overflow-y:auto;padding:6px 6px 10px;flex:1;min-height:0}
+.zone{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:10px 8px 4px}
+.part-btn{display:grid;grid-template-columns:28px 1fr;gap:8px;align-items:center;width:100%;text-align:left;background:none;border:0;border-radius:7px;padding:6px 8px;cursor:pointer}
+.part-btn:hover{background:var(--chip)}
+.part-btn[aria-current="true"]{background:var(--chip);box-shadow:inset 2px 0 0 var(--accent)}
+.part-btn[aria-current="true"] .part-no{background:var(--accent);border-color:var(--accent);color:#fff}
+.part-no{font-family:var(--f-mono);font-size:11px;font-weight:500;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line2);color:var(--t2);font-variant-numeric:tabular-nums}
+.part-txt{min-width:0;line-height:1.3}
+.part-txt b{display:block;font-weight:500;font-size:13px}
+.part-txt small{display:block;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* control bar */
+.bar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));max-width:calc(100% - 32px);display:flex;gap:6px;align-items:center;padding:6px;overflow-x:auto;scrollbar-width:none}
+.bar::-webkit-scrollbar{display:none}
+.sep{width:1px;align-self:stretch;background:var(--line);margin:4px 2px;flex:none}
+a.btn{color:var(--fg)}
+.btn{flex:none;display:inline-flex;text-decoration:none;align-items:center;gap:6px;border:1px solid transparent;background:none;border-radius:8px;padding:0 12px;height:32px;cursor:pointer;white-space:nowrap;font-size:13px}
+.btn:hover{background:var(--chip)}
+.btn small{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);letter-spacing:.03em}
+.btn.primary{background:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn.primary small{color:inherit;opacity:.8}
+.btn.primary:hover{filter:brightness(1.06);background:var(--accent)}
+.btn[aria-pressed="true"]:not(.primary){background:var(--chip);border-color:var(--line2)}
+.btn .ico{width:16px;height:16px;flex:none}
+.only-mobile{display:none}
+
+.hint{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));font-size:12px;color:var(--muted);padding:5px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line);white-space:nowrap;transition:opacity .4s}
+
+/* pins */
+#pins{position:absolute;inset:0;pointer-events:none}
+.pin{position:absolute;left:0;top:0;pointer-events:auto;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;border:2px solid #fff;background:var(--accent);color:#fff;font-family:var(--f-mono);font-size:11px;font-weight:500;display:grid;place-items:center;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35);transition:opacity .25s, transform .15s;will-change:transform}
+.pin::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:1.5px solid var(--accent);opacity:.35}
+.pin.active{background:var(--blue)}
+.pin.active::after{border-color:var(--blue)}
+.pin-label{position:absolute;left:30px;top:50%;transform:translateY(-50%);background:var(--panel-solid);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-family:var(--f-body);font-size:12px;font-weight:500;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s}
+.pin:hover .pin-label,.pin:focus-visible .pin-label{opacity:1}
+
+/* drawer */
+.drawer{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:calc(92px + env(safe-area-inset-bottom,0px));width:min(400px,calc(100% - 32px));display:flex;flex-direction:column;overflow:hidden;transition:transform .35s cubic-bezier(.2,.8,.2,1),opacity .25s}
+.drawer[hidden]{display:flex!important;transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
+.d-scroll{overflow-y:auto;padding:14px 16px 16px;flex:1;min-height:0}
+.d-head{display:flex;justify-content:space-between;align-items:center;padding:10px 10px 10px 16px;border-bottom:1px solid var(--line)}
+.icon-btn{width:32px;height:32px;border-radius:7px;border:0;background:none;cursor:pointer;font-size:20px;line-height:1;display:grid;place-items:center}
+.icon-btn:hover{background:var(--chip)}
+.d-title{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;margin-bottom:12px}
+.d-no{font-family:var(--f-mono);font-weight:500;font-size:28px;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
+.d-title h2{margin:0;font-size:18px;font-weight:500;line-height:1.3;text-wrap:balance}
+.d-en{margin:2px 0 0;font-size:13px;font-weight:400;color:var(--muted)}
+.d-photo{margin:0 0 8px;border-radius:8px;overflow:hidden;background:var(--chip);border:1px solid var(--line)}
+.d-photo img{display:block;width:100%;max-height:300px;object-fit:contain;background:#0c0f12}
+.d-photo figcaption{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);padding:6px 10px;letter-spacing:.03em}
+.thumbs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.thumbs button{width:52px;height:40px;padding:0;border-radius:5px;border:1.5px solid var(--line);overflow:hidden;cursor:pointer;background:var(--chip)}
+.thumbs button[aria-current="true"]{border-color:var(--accent)}
+.thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+.d-body{margin:0 0 12px;font-size:14px;max-width:65ch}
+.d-note{margin:0 0 12px;font-size:12px;color:var(--muted);padding:8px 10px;border-left:2px solid var(--line);background:var(--chip);border-radius:0 6px 6px 0}
+.specs{width:100%;border-collapse:collapse;font-size:12.5px;margin:4px 0 12px}
+.specs th{text-align:left;font-weight:400;color:var(--muted);padding:6px 8px 6px 0;vertical-align:top;border-bottom:1px solid var(--line);width:46%}
+.specs th span{display:block;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.02em}
+.specs td{font-family:var(--f-mono);padding:6px 0;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;vertical-align:top}
+.d-nav{display:flex;justify-content:space-between;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+.d-nav .btn{border:1px solid var(--line2)}
+
+/* vend toast */
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(112px + env(safe-area-inset-bottom,0px));padding:9px 14px;font-size:13px;text-align:center;max-width:calc(100% - 32px);line-height:1.45}
+.toast b{font-family:var(--f-mono);font-weight:500}
+.toast small{color:var(--muted);font-size:11.5px}
+.toast .hot{color:#d23a2a;font-weight:600}
+.toast .cold{color:var(--blue);font-weight:600}
+.d-body a,.d-note a{color:var(--accent)}
+.cmp-h{font-family:var(--f-display);font-size:16px;font-weight:600;margin:14px 0 2px;letter-spacing:.02em}
+
+/* loading */
+#loading{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg);z-index:5;transition:opacity .5s}
+#loading.done{opacity:0;pointer-events:none}
+.ld{text-align:center;padding:0 24px}
+.ld b{display:block;font-family:var(--f-mono);font-size:18px;font-weight:500}
+.ld span{color:var(--muted);font-size:13px}
+
+@media (max-width:1100px){
+  .parts.dimmed{opacity:0;pointer-events:none}
+}
+@media (max-width:760px){
+  .hdr{padding:8px 12px 8px 8px;max-width:calc(100% - 112px)}
+  .hdr h1{font-size:15px;line-height:20px}
+  #specBtn{display:none}
+  .bar .btn[data-view],#pinsBtn,#samplesBtn,#spinBtn,.bar .sep{display:none}
+  .bar{justify-content:center}
+  #partsBtn{order:-1}
+  .hdr p,.hdr .eyebrow{display:none}
+  .top-right .stat{display:none}
+  .only-mobile{display:inline-flex}
+  .hint{display:none}
+  .parts{top:auto;bottom:calc(74px + env(safe-area-inset-bottom,0px));width:auto;right:max(16px,env(safe-area-inset-right,0px));max-height:52%;transition:transform .3s, opacity .25s}
+  .parts:not(.open){transform:translateY(20px);opacity:0;pointer-events:none}
+  .drawer{top:auto;left:max(16px,env(safe-area-inset-left,0px));width:auto;bottom:calc(74px + env(safe-area-inset-bottom,0px));max-height:48%}
+  .drawer[hidden]{transform:translateY(calc(100% + 90px))}
+  .d-photo img{max-height:132px}
+  .d-scroll{padding:12px 16px}
+  .d-title{margin-bottom:8px}
+  .d-no{font-size:22px}
+  .d-title h2{font-size:16px}
+  .bar{left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));transform:none;max-width:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .drawer,.parts{transition:none}
+}
+</style>
+
+</head>
+<body>
+<div id="app">
+  <canvas id="c" aria-label="โมเดล 3 มิติของตู้จำหน่ายเครื่องดื่ม P-RK36-HPAPER"></canvas>
+  <div id="pins"></div>
+
+  <header class="hdr panel">
+    <div class="hdr-tag" aria-hidden="true">S</div>
+    <div>
+      <div class="eyebrow">SUN VENDING · คู่มือถ่ายรูป</div>
+      <h1>P-RK36-HPAPER</h1>
+      <p>Panasonic · ตู้กระป๋อง/ขวด 36 ช่อง</p>
+    </div>
+  </header>
+
+  <div class="top-right">
+    <div class="stat panel" aria-label="สเปกหลัก">
+      <div><span>W×D×H </span><b>1185×731×1830</b><span> mm*</span></div>
+      <div><b>275</b><span> kg</span></div>
+      <div><b>1,693</b><span> L</span></div>
+    </div>
+    <button class="btn panel" id="specBtn" type="button">สเปก <small>SPECS</small></button>
+    <a class="btn panel" id="cdbBtn" href="https://rd-svt.github.io/Can-Database-CDB2/" title="กลับไปหน้า Can Database">← CDB</a>
+  </div>
+
+  <nav class="parts panel" id="parts" aria-label="ลำดับการถ่าย">
+    <div class="parts-head"><h2>ลำดับการถ่าย</h2><span class="eyebrow" id="partsCount"></span></div>
+    <div class="parts-list" id="partsList"></div>
+  </nav>
+
+  <div class="hint" id="hint">ลากเพื่อหมุน · เลื่อนเพื่อซูม · กดหมุดเพื่อดูวิธีถ่าย</div>
+  <div class="toast panel" id="toast" hidden role="status"></div>
+
+  <div class="bar panel" role="toolbar" aria-label="ควบคุมโมเดล">
+    <button class="btn primary" id="doorBtn" type="button" aria-pressed="false">
+      <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 2h7v12H3z"/><path d="M10 3.5l3-1.2v11.4l-3-1.2"/><circle cx="8" cy="8.5" r=".6" fill="currentColor"/></svg>
+      <span id="doorTxt">เปิดประตู</span> <small id="doorSub">OPEN</small>
+    </button>
+    <button class="btn" id="innerBtn" type="button" aria-pressed="false">ประตูใน <small>INNER</small></button>
+    <span class="sep" aria-hidden="true"></span>
+    <button class="btn" data-view="overview" type="button">ภาพรวม</button>
+    <button class="btn" data-view="interior" type="button">ภายในตู้</button>
+    <button class="btn" data-view="door_side" type="button">ด้านในประตู</button>
+    <button class="btn" data-view="machine" type="button">ห้องเครื่อง</button>
+    <span class="sep" aria-hidden="true"></span>
+    <button class="btn" id="pinsBtn" type="button" aria-pressed="true">จุดข้อมูล</button>
+    <button class="btn" id="samplesBtn" type="button" aria-pressed="true">สินค้าตัวอย่าง</button>
+    <button class="btn" id="spinBtn" type="button" aria-pressed="false">หมุนอัตโนมัติ</button>
+    <button class="btn only-mobile" id="partsBtn" type="button" aria-pressed="false" aria-controls="parts">ลำดับการถ่าย</button>
+  </div>
+
+  <aside class="drawer panel" id="drawer" hidden aria-live="polite"></aside>
+
+  <div id="loading"><div class="ld"><b>P-RK36-HPAPER</b><span id="ldMsg">กำลังประกอบโมเดล 3D…</span></div></div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script>
+  window.addEventListener('error', e => {
+    const m = document.getElementById('ldMsg');
+    if (m && !document.getElementById('loading').classList.contains('done')) m.textContent = 'โหลดโมเดลไม่สำเร็จ: ' + (e.message || 'unknown error');
+  });
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+const $ = s => document.querySelector(s);
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------------- renderer / scene ---------------- */
+const canvas = $('#c');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+} catch (e) {
+  $('#ldMsg').textContent = 'เบราว์เซอร์นี้ไม่รองรับ WebGL จึงแสดงโมเดล 3D ไม่ได้';
+  throw e;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(36, 1, 0.03, 60);
+camera.position.set(2.2, 1.45, 3.3);
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, 0.95, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 0.35;
+controls.maxDistance = 7;
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.autoRotateSpeed = 0.6;
+
+/* ---------------- lights ---------------- */
+scene.add(new THREE.HemisphereLight(0xf2f6fa, 0x5d6266, 0.55));
+const sun = new THREE.DirectionalLight(0xffffff, 1.9);
+sun.position.set(2.6, 4.6, 3.6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -2, right: 2, top: 2.6, bottom: -1, near: 0.5, far: 12 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xcfe0ff, 0.45);
+fill.position.set(-3.5, 2.5, 1.5);
+scene.add(fill);
+
+/* ---------------- canvas textures ---------------- */
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+function ctex(w, h, draw, opts = {}) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); draw(g, w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = opts.linear ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+  t.anisotropy = maxAniso;
+  if (opts.repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(...opts.repeat); }
+  return t;
+}
+const FD = '"Barlow Condensed","Arial Narrow",sans-serif';
+const FJ = '"Hiragino Sans","Yu Gothic","Meiryo","Noto Sans JP",sans-serif';
+
+const products = [
+  { bg:'#6b2a14', band:'#f0c66a', ink:'#ffffff', t:'COFFEE', liq:'#3a1f0e' },
+  { bg:'#1f6e3a', band:'#eef3e6', ink:'#1f6e3a', t:'緑茶', liq:'#9fae4a' },
+  { bg:'#e9f1f7', band:'#3c8fd0', ink:'#ffffff', t:'WATER', liq:'#dbeef8' },
+  { bg:'#b51c1c', band:'#ffffff', ink:'#b51c1c', t:'COLA', liq:'#2a120b' },
+  { bg:'#f08a1c', band:'#fff4d6', ink:'#c25400', t:'ORANGE', liq:'#f39a1e' },
+  { bg:'#16245c', band:'#d8b04a', ink:'#16245c', t:'BLACK', liq:'#1a0f08' },
+  { bg:'#f3e04a', band:'#2e8b3a', ink:'#ffffff', t:'LEMON', liq:'#f2e48a' },
+  { bg:'#2a9fd6', band:'#ffffff', ink:'#0d5f8a', t:'SPORTS', liq:'#e2f2fb' },
+  { bg:'#c9a27a', band:'#5a3a22', ink:'#ffffff', t:'MILK TEA', liq:'#c49a6c' },
+  { bg:'#7a8b2a', band:'#f2efe0', ink:'#4b5718', t:'麦茶', liq:'#b07a2c' },
+];
+const labelTex = products.map(p => ctex(256, 128, (g, w, h) => {
+  g.fillStyle = p.bg; g.fillRect(0, 0, w, h);
+  g.fillStyle = p.band; g.fillRect(0, h * .36, w, h * .3);
+  g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(0, h * .12, w, 3); g.fillRect(0, h * .86, w, 3);
+  g.fillStyle = p.ink; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = `700 ${/[^\x00-\x7F]/.test(p.t) ? 26 : 28}px ${/[^\x00-\x7F]/.test(p.t) ? FJ : FD}`;
+  g.fillText(p.t, w * .25, h * .515); g.fillText(p.t, w * .75, h * .515);
+}));
+
+const sheetTex = ctex(1024, 920, (g, w, h) => {
+  g.fillStyle = '#e9ecea'; g.fillRect(0, 0, w, h);
+  const sheet = (x, y, sw, sh, title, kind) => {
+    g.fillStyle = '#fbfbf8'; g.fillRect(x, y, sw, sh);
+    g.strokeStyle = '#c9ccc8'; g.strokeRect(x + .5, y + .5, sw - 1, sh - 1);
+    g.fillStyle = '#333'; g.font = `600 15px ${FJ}`; g.fillText(title, x + 10, y + 22);
+    g.strokeStyle = '#9aa0a0'; g.lineWidth = 1;
+    if (kind === 'table') {
+      for (let r = 0; r < 10; r++) { g.beginPath(); g.moveTo(x + 8, y + 36 + r * (sh - 46) / 10); g.lineTo(x + sw - 8, y + 36 + r * (sh - 46) / 10); g.stroke(); }
+      for (let c = 0; c < 6; c++) { g.beginPath(); g.moveTo(x + 8 + c * (sw - 16) / 5, y + 36); g.lineTo(x + 8 + c * (sw - 16) / 5, y + sh - 10); g.stroke(); }
+    } else {
+      g.fillStyle = '#8d9392';
+      for (let r = 0; r < Math.floor((sh - 40) / 11); r++) g.fillRect(x + 10, y + 34 + r * 11, (sw - 20) * (0.55 + 0.45 * Math.abs(Math.sin(r * 7.3 + x))), 3);
+      if (kind === 'fig') { g.strokeStyle = '#555'; g.strokeRect(x + 14, y + 40, sw * .4, sh * .35); g.strokeRect(x + sw * .55, y + 46, sw * .3, sh * .25); }
+    }
+  };
+  sheet(150, 360, 200, 250, '価格設定方法', 'fig');
+  sheet(360, 360, 200, 250, 'ブリーセレクション', 'table');
+  sheet(570, 360, 170, 250, 'コラム設定', 'txt');
+  sheet(750, 340, 130, 280, '取扱説明', 'txt');
+  sheet(780, 180, 120, 150, '注意', 'fig');
+  sheet(150, 230, 150, 120, '販売切替', 'txt');
+});
+
+const stickerTex = ctex(128, 64, (g, w, h) => {
+  g.fillStyle = '#f4f4f0'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#555'; g.font = `600 12px ${FJ}`; g.fillText('コラム', 6, 15);
+  g.fillStyle = '#999'; for (let i = 0; i < 4; i++) g.fillRect(6, 24 + i * 9, w - 20 - i * 8, 3);
+});
+
+const keypadTex = ctex(512, 220, (g, w, h) => {
+  g.fillStyle = '#16181a'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#f3f0e8'; g.fillRect(30, 40, 300, 160);
+  g.fillStyle = '#f3f0e8'; g.fillRect(150, 10, 150, 22);
+  g.fillStyle = '#c0392b'; g.font = `600 11px ${FJ}`; g.fillText('冷却 ・ 加温 ・ 販売設定', 154, 26);
+  g.fillStyle = '#222'; g.font = `500 11px ${FJ}`;
+  const labels = ['インバータ', '節電', '照明', '設定', '確認', '販売', '冷却', '加温', '切替', '戻る', '登録', '終了'];
+  labels.forEach((l, i) => { const cx = 40 + (i % 4) * 72, cy = 60 + Math.floor(i / 4) * 48; g.strokeStyle = '#888'; g.strokeRect(cx, cy, 64, 40); g.fillText(l, cx + 5, cy + 16); g.beginPath(); g.arc(cx + 50, cy + 28, 4, 0, 7); g.fill(); });
+});
+
+const remoteTex = ctex(256, 128, (g, w, h) => {
+  g.fillStyle = '#3a3e43'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#e8e8e4';
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) g.fillRect(14 + c * 20, 22 + r * 30, 15, 20);
+  g.fillStyle = '#2a2d31'; for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) { g.fillStyle = '#d9dad6'; g.fillRect(140 + c * 16, 18 + r * 24, 12, 16); }
+  g.fillStyle = '#4fbf86'; g.fillRect(196, 20, 46, 86);
+});
+
+function pcbTex(kind) {
+  return ctex(512, 420, (g, w, h) => {
+    g.fillStyle = '#1c6a33'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(160,220,150,.25)'; g.lineWidth = 2;
+    for (let i = 0; i < 60; i++) { g.beginPath(); const x = (i * 97) % w, y = (i * 53) % h; g.moveTo(x, y); g.lineTo(x + 40 * Math.sin(i), y); g.lineTo(x + 40 * Math.sin(i), y + 30 * Math.cos(i * 1.7)); g.stroke(); }
+    g.strokeStyle = 'rgba(255,255,255,.65)'; g.lineWidth = 1.5;
+    const conn = (x, y, cw, ch, col = '#efe9dc') => { g.fillStyle = col; g.fillRect(x, y, cw, ch); };
+    if (kind === 'relay') {
+      for (let i = 0; i < 4; i++) { g.fillStyle = '#111'; g.fillRect(190, 210 + i * 46, 80, 40); g.fillStyle = '#ddd'; g.font = '9px sans-serif'; g.fillText('RELAY 12V', 196, 232 + i * 46); }
+      for (let i = 0; i < 3; i++) { g.fillStyle = '#111'; g.fillRect(90, 70 + i * 50, 70, 38); }
+      conn(250, 50, 40, 70); conn(330, 40, 40, 70); conn(330, 120, 40, 60, '#d9534f'); conn(250, 120, 40, 60, '#d9534f'); conn(445, 60, 40, 50); conn(445, 120, 40, 50); conn(410, 330, 36, 70); conn(140, 300, 30, 90);
+      for (let i = 0; i < 8; i++) { g.fillStyle = '#121212'; g.fillRect(320 + (i % 2) * 60, 230 + Math.floor(i / 2) * 36, 40, 18); }
+      g.fillStyle = '#f2f2f2'; g.font = 'bold 13px sans-serif'; g.fillText('DIP ⇨', 440, 410);
+      const cols = ['#e53935', '#fdd835', '#1e88e5', '#8e24aa', '#ff9800', '#9e9e9e', '#f06292', '#43a047'];
+      g.lineWidth = 6; g.lineCap = 'round';
+      cols.forEach((c, i) => { g.strokeStyle = c; g.beginPath(); g.moveTo(0, 230 + i * 7); g.bezierCurveTo(160, 200 + i * 9, 300, 120 + i * 6, 380, 60 + i * 8); g.stroke(); });
+    } else if (kind === 'inverter') {
+      g.fillStyle = '#b8732e'; g.beginPath(); g.arc(250, 70, 48, 0, 7); g.fill(); g.fillStyle = '#5a3612'; g.beginPath(); g.arc(250, 70, 18, 0, 7); g.fill();
+      [[220, 170], [290, 170], [220, 240], [290, 240]].forEach(([x, y]) => { g.fillStyle = '#3d2622'; g.beginPath(); g.arc(x, y, 32, 0, 7); g.fill(); g.fillStyle = '#c9c9c9'; g.beginPath(); g.arc(x, y, 22, 0, 7); g.fill(); g.strokeStyle = '#777'; g.beginPath(); g.moveTo(x - 14, y); g.lineTo(x + 14, y); g.moveTo(x, y - 14); g.lineTo(x, y + 14); g.stroke(); });
+      g.fillStyle = '#b9bdc2'; g.fillRect(350, 160, 130, 200); g.fillStyle = '#8b9096'; for (let i = 0; i < 7; i++) g.fillRect(356 + i * 18, 160, 6, 200);
+      conn(90, 20, 50, 40); conn(330, 10, 40, 50); conn(70, 120, 36, 30); conn(380, 380, 70, 30);
+      g.fillStyle = '#2d6fb5'; g.fillRect(150, 70, 26, 40); g.fillRect(360, 70, 26, 40);
+      g.fillStyle = '#111'; g.fillRect(220, 300, 40, 40);
+    } else {
+      for (let i = 0; i < 5; i++) { g.fillStyle = '#151515'; g.fillRect(14, 70 + i * 62, 46, 46); g.fillStyle = '#aaa'; g.fillRect(20, 76 + i * 62, 34, 10); }
+      g.fillStyle = '#111'; g.fillRect(230, 180, 54, 54);
+      g.fillStyle = '#4a1d1d'; g.beginPath(); g.arc(430, 130, 46, 0, 7); g.fill(); g.fillStyle = '#c4c4c4'; g.beginPath(); g.arc(430, 130, 30, 0, 7); g.fill();
+      g.fillStyle = '#e8b52a'; g.fillRect(360, 300, 70, 46);
+      g.fillStyle = '#c87e2d'; g.fillRect(310, 110, 60, 140);
+      conn(120, 330, 70, 32); conn(250, 330, 50, 32); conn(250, 30, 36, 30); conn(320, 30, 36, 30);
+      for (let i = 0; i < 4; i++) { g.fillStyle = '#121212'; g.fillRect(120 + i * 36, 120, 26, 60); }
+    }
+    g.fillStyle = 'rgba(255,255,255,.75)'; g.font = '11px monospace'; g.fillText(kind === 'relay' ? 'CC-CB04300' : kind === 'inverter' ? 'CC-C003D50' : 'CC-CS0 1754', 20, h - 14);
+  });
+}
+const relayTex = pcbTex('relay'), invTex = pcbTex('inverter'), masterTex = pcbTex('master');
+
+const grilleTex = ctex(256, 128, (g, w, h) => {
+  g.fillStyle = '#d3d6d8'; g.fillRect(0, 0, w, h);
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 8; c++) g.clearRect(12 + c * 30, 10 + r * 23, 22, 15);
+});
+const ovalPlateTex = ctex(512, 96, (g, w, h) => {
+  g.fillStyle = '#dcd8cf'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#25282b';
+  for (let i = 0; i < 9; i++) { g.beginPath(); g.ellipse(36 + i * 55, h * .58, 17, 10, 0, 0, 7); g.fill(); }
+  g.fillStyle = '#9aa0a3'; g.fillRect(0, 6, w, 3);
+});
+const finTex = ctex(256, 64, (g, w, h) => {
+  g.fillStyle = '#7d8489'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#c6cbcf'; for (let i = 0; i < 128; i++) g.fillRect(i * 2, 0, 1, h);
+  g.fillStyle = '#a3683a'; for (let r = 0; r < 3; r++) g.fillRect(0, 10 + r * 20, w, 3);
+});
+const rotorTex = ctex(64, 128, (g, w, h) => {
+  g.fillStyle = '#1b1c1e'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#3a3c40'; for (let i = 0; i < 16; i++) g.fillRect(0, i * 8, w, 3);
+}, { repeat: [1, 2] });
+const nameTex = ctex(512, 400, (g, w, h) => {
+  const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#c9ccce'); gr.addColorStop(.5, '#e7e9ea'); gr.addColorStop(1, '#b8bcbf');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#1b1b1b'; g.font = `700 34px ${FD}`; g.fillText('Panasonic', 30, 56);
+  g.font = `500 18px ${FJ}`; g.fillText('自動販売機', 220, 40); g.fillText('形名  P-RK36-HPAPER', 220, 66);
+  g.strokeStyle = '#333'; g.lineWidth = 1.5; g.strokeRect(24, 82, w - 48, 120); g.strokeRect(24, 210, w - 48, 120);
+  g.font = `500 15px ${FJ}`;
+  [['定格電圧', '100V'], ['定格周波数', '50/60 Hz'], ['定格消費電力', '159/159 W'], ['電熱装置', '450 W']].forEach(([a, b], i) => { g.fillText(a, 36 + (i % 2) * 230, 112 + Math.floor(i / 2) * 44); g.fillText(b, 140 + (i % 2) * 230, 112 + Math.floor(i / 2) * 44); });
+  [['調整庫内容積', '1693 L'], ['年間消費電力量', '978 kWh'], ['冷媒', 'R600a  53 g'], ['質量', '275 kg']].forEach(([a, b], i) => { g.fillText(a, 36 + (i % 2) * 230, 240 + Math.floor(i / 2) * 44); g.fillText(b, 150 + (i % 2) * 230, 240 + Math.floor(i / 2) * 44); });
+  g.font = `700 28px ${FD}`; g.fillText('製造番号  1806535051', 60, 370);
+});
+let lcdG = null;
+const lcdTex = ctex(128, 32, (g) => { lcdG = g; });
+function setLCD(txt) {
+  const g = lcdG, w = 128, h = 32;
+  g.fillStyle = '#051208'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#74ff9a'; g.font = '700 24px monospace'; g.textAlign = 'right'; g.fillText(txt, w - 10, 25);
+  lcdTex.needsUpdate = true;
+}
+setLCD('0');
+const btnTex = ctex(128, 48, (g, w, h) => {
+  g.fillStyle = '#2b66e0'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#ffffff'; g.font = `700 22px ${FJ}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('ウリキレ', w / 2, h / 2 + 1);
+});
+const compLabelTex = ctex(256, 140, (g, w, h) => {
+  g.fillStyle = '#f5f5f2'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#7fc8d6'; g.fillRect(0, 70, w, 70);
+  g.fillStyle = '#111'; g.font = `700 24px ${FD}`; g.fillText('EFI120E13DCH', 10, 100);
+  g.font = '600 14px sans-serif'; g.fillText('240V ⎓ 57–240Hz', 10, 122); g.fillText('R600a', 190, 28);
+  for (let i = 0; i < 40; i++) g.fillRect(10 + i * 4, 40, i % 3 ? 2 : 1, 20);
+});
+const floorTex = ctex(512, 512, (g, w, h) => {
+  g.fillStyle = '#9da2a4'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 9000; i++) { const v = 130 + Math.random() * 60 | 0; g.fillStyle = `rgba(${v},${v + 3},${v + 5},.18)`; g.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 3, 2 + Math.random() * 3); }
+  g.strokeStyle = 'rgba(80,85,88,.35)'; g.lineWidth = 2; g.strokeRect(0, 0, w, h);
+}, { repeat: [10, 10] });
+
+/* ---------------- materials ---------------- */
+const mStd = o => new THREE.MeshStandardMaterial(o);
+const M = {
+  paint: new THREE.MeshPhysicalMaterial({ color: 0xdcdedd, roughness: 0.34, clearcoat: 0.45, clearcoatRoughness: 0.25 }),
+  inner: mStd({ color: 0xcfd6dc, roughness: 0.5 }),
+  liner: mStd({ color: 0xaeb5bb, roughness: 0.45, metalness: 0.35 }),
+  galv: mStd({ color: 0xb4bac0, roughness: 0.38, metalness: 0.75 }),
+  steelDoor: mStd({ color: 0x8e99a1, roughness: 0.5, metalness: 0.45 }),
+  teal: mStd({ color: 0x5f7e84, roughness: 0.62, metalness: 0.15 }),
+  black: mStd({ color: 0x141414, roughness: 0.5 }),
+  dark: mStd({ color: 0x08090a, roughness: 0.85 }),
+  blueBtn: mStd({ color: 0x2b66e0, roughness: 0.35, emissive: 0x2a64ff, emissiveIntensity: 0.35 }),
+  btnFace: mStd({ map: btnTex, roughness: 0.35, emissive: 0xffffff, emissiveMap: btnTex, emissiveIntensity: 0.55 }),
+  orange: mStd({ color: 0xee6a1c, roughness: 0.38 }),
+  chrome: mStd({ color: 0xe6e8eb, roughness: 0.1, metalness: 1 }),
+  silver: mStd({ color: 0xc5c9cd, roughness: 0.28, metalness: 1 }),
+  lcd: mStd({ map: lcdTex, emissive: 0xffffff, emissiveMap: lcdTex, emissiveIntensity: 1.2 }),
+  adPanel: mStd({ color: 0xeef2f5, roughness: 0.4, emissive: 0xeaf1ff, emissiveIntensity: 0.35 }),
+  led: mStd({ color: 0xffffff, emissive: 0xeef5ff, emissiveIntensity: 3 }),
+  sticker: mStd({ color: 0xf2f2ee, roughness: 0.6 }),
+  stickerTx: mStd({ map: stickerTex, roughness: 0.6 }),
+  beige: mStd({ color: 0xe6dcc4, roughness: 0.62 }),
+  red: mStd({ color: 0xd4252a, roughness: 0.35, emissive: 0x880000, emissiveIntensity: 0.4 }),
+  kick: mStd({ color: 0x3d4247, roughness: 0.6, metalness: 0.3 }),
+  copper: mStd({ color: 0xb8733d, roughness: 0.32, metalness: 1 }),
+  compBody: mStd({ color: 0x1d1e20, roughness: 0.7, metalness: 0.2 }),
+  glass: new THREE.MeshPhysicalMaterial({ color: 0xf4f8ff, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.12, depthWrite: false, envMapIntensity: 1.4, clearcoat: 1 }),
+  smoke: new THREE.MeshPhysicalMaterial({ color: 0x15171a, roughness: 0.12, transparent: true, opacity: 0.78, clearcoat: 1 }),
+  clear: new THREE.MeshPhysicalMaterial({ color: 0xeef6ff, roughness: 0.08, transparent: true, opacity: 0.25, depthWrite: false }),
+  pet: new THREE.MeshPhysicalMaterial({ color: 0xd6e8ef, roughness: 0.06, transparent: true, opacity: 0.42, depthWrite: false, clearcoat: 1 }),
+  cap: mStd({ color: 0xf2f2f2, roughness: 0.4 }),
+  canEnd: mStd({ color: 0xcfd3d6, roughness: 0.25, metalness: 1 }),
+  sheets: mStd({ map: sheetTex, roughness: 0.65 }),
+  keypad: mStd({ map: keypadTex, roughness: 0.5 }),
+  remote: mStd({ map: remoteTex, roughness: 0.45 }),
+  relayPcb: mStd({ map: relayTex, roughness: 0.45 }),
+  invPcb: mStd({ map: invTex, roughness: 0.45 }),
+  masterPcb: mStd({ map: masterTex, roughness: 0.45 }),
+  grille: mStd({ map: grilleTex, roughness: 0.5, metalness: 0.4, alphaTest: 0.5, side: THREE.DoubleSide }),
+  ovalPlate: mStd({ map: ovalPlateTex, roughness: 0.6 }),
+  fins: mStd({ map: finTex, roughness: 0.4, metalness: 0.6 }),
+  rotor: mStd({ map: rotorTex, roughness: 0.6 }),
+  nameplate: mStd({ map: nameTex, roughness: 0.3, metalness: 0.6 }),
+  compLabel: mStd({ map: compLabelTex, roughness: 0.5 }),
+  floor: mStd({ map: floorTex, roughness: 0.85 }),
+  yellow: mStd({ color: 0xf2c218, roughness: 0.7 }),
+};
+
+/* ---------------- geometry helpers ---------------- */
+function B(x0, x1, y0, y1, z0, z1, mat, parent, r = 0) {
+  const w = x1 - x0, h = y1 - y0, d = z1 - z0;
+  const rr = Math.min(r, w / 2 - 1e-4, h / 2 - 1e-4, d / 2 - 1e-4);
+  const g = rr > 0.0005 ? new RoundedBoxGeometry(w, h, d, 2, rr) : new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(g, mat);
+  m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  parent.add(m); return m;
+}
+function Cyl(r, h, x, y, z, mat, parent, axis = 'y', seg = 32, r2 = r) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r2, r, h, seg), mat);
+  m.position.set(x, y, z);
+  if (axis === 'z') m.rotation.x = Math.PI / 2;
+  if (axis === 'x') m.rotation.z = Math.PI / 2;
+  parent.add(m); return m;
+}
+function Plane(w, h, mat, parent, x, y, z, ry = 0) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  m.position.set(x, y, z); m.rotation.y = ry; parent.add(m); return m;
+}
+function tube(points, r, mat, parent) {
+  const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)));
+  const m = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, r, 8, false), mat);
+  parent.add(m); return m;
+}
+
+/* ---------------- floor ---------------- */
+const floor = new THREE.Mesh(new THREE.CircleGeometry(14, 64), M.floor);
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 9), M.yellow);
+stripe.rotation.x = -Math.PI / 2; stripe.position.set(0.95, 0.001, 1.6); stripe.rotation.z = Math.PI / 2; stripe.receiveShadow = true; scene.add(stripe);
+
+/* ================= MACHINE ================= */
+const vm = new THREE.Group(); scene.add(vm);
+vm.scale.set(1.185 / 1.19, 1, 0.731 / 0.73);   // match comparable 36-selection body: 1185 x 731 x 1830 mm
+const HX = 0.595, ZF = 0.365, ZC = 0.165; // half width, door front, cabinet front
+
+/* ---- cabinet shell ---- */
+B(-HX, -HX + 0.02, 0.06, 1.87, -ZF, ZC, M.paint, vm, 0.006);
+B(HX - 0.02, HX, 0.06, 1.87, -ZF, ZC, M.paint, vm, 0.006);
+B(-HX, HX, 1.85, 1.87, -ZF, ZC, M.paint, vm, 0.006);
+B(-HX, HX, 0.06, 1.87, -ZF, -ZF + 0.02, M.paint, vm, 0.006);
+B(-HX + 0.02, HX - 0.02, 0.06, 0.08, -ZF, ZC, M.galv, vm);
+B(-HX + 0.015, HX - 0.015, 0.035, 0.06, -ZF + 0.01, ZC - 0.015, M.kick, vm);
+// front flange
+B(-HX, -HX + 0.03, 0.06, 1.87, ZC - 0.015, ZC, M.paint, vm);
+B(HX - 0.03, HX, 0.06, 1.87, ZC - 0.015, ZC, M.paint, vm);
+B(-HX, HX, 1.835, 1.87, ZC - 0.015, ZC, M.paint, vm);
+// liners (insulated storage compartment)
+B(-0.575, -0.57, 0.3, 1.85, -0.345, 0.15, M.liner, vm);
+B(0.57, 0.575, 0.3, 1.85, -0.345, 0.15, M.liner, vm);
+B(-0.575, 0.575, 1.845, 1.85, -0.345, 0.15, M.liner, vm);
+B(-0.575, 0.575, 0.3, 1.85, -0.345, -0.34, M.liner, vm);
+// feet
+[[-0.53, -0.3], [0.53, -0.3], [-0.53, 0.3], [0.53, 0.3]].forEach(([x, z]) => {
+  Cyl(0.028, 0.012, x, 0.006, z, M.chrome, vm); Cyl(0.008, 0.03, x, 0.027, z, M.chrome, vm);
+});
+// nameplate on right side
+Plane(0.18, 0.14, M.nameplate, vm, HX + 0.0015, 0.42, -0.16, Math.PI / 2);
+
+/* ---- product storage rack ---- */
+const rack = new THREE.Group(); vm.add(rack);
+const COLW = 0.185, RX0 = -0.56;
+for (let i = 0; i <= 6; i++) B(RX0 + i * COLW - 0.003, RX0 + i * COLW + 0.003, 0.36, 1.83, -0.33, 0.09, M.galv, rack);
+// selection data: 36 columns, numbered 1-12 bottom row of buttons, 13-24 middle, 25-36 top (as in comparable 36-selection machines)
+let seed = 36; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+const PRICES = [110, 120, 130, 140, 150, 160, 180], HOTP = [0, 1, 5, 8, 9];
+const sel = [null];
+for (let n = 1; n <= 36; n++) {
+  const hot = n <= 12;                                   // left room (columns 1-12) set to HOT
+  const p = hot ? HOTP[Math.floor(rnd() * HOTP.length)] : Math.floor(rnd() * products.length);
+  sel.push({ n, p, hot, price: PRICES[Math.floor(rnd() * PRICES.length)] });
+}
+// 6 racks x 6 columns = 36 storage columns (one per selection button); rooms: L = racks 1-2 (12 col), C = rack 3 (6), R = racks 4-6 (18)
+const RROWS = 6, RY0 = 0.40, RH = (1.83 - RY0) / RROWS, TPR = 2;
+const trayGeo = new THREE.BoxGeometry(COLW - 0.012, 0.004, 0.40);
+const trayIM = new THREE.InstancedMesh(trayGeo, M.galv, 6 * RROWS * TPR);
+const lipIM = new THREE.InstancedMesh(new THREE.BoxGeometry(COLW - 0.012, 0.022, 0.004), M.galv, 6 * RROWS * TPR);
+const canGeo = new THREE.CylinderGeometry(0.033, 0.033, 0.112, 18);
+const canIM = new THREE.InstancedMesh(canGeo, mStd({ color: 0xffffff, roughness: 0.3, metalness: 0.55 }), 6 * RROWS * TPR * 5);
+const dm = new THREE.Object3D(), col = new THREE.Color();
+let ti = 0, ci = 0;
+for (let r = 0; r < RROWS; r++) {
+  const yb = RY0 + r * RH;
+  B(-0.56, 0.55, yb - 0.004, yb + 0.004, -0.33, 0.09, M.galv, rack);           // row shelf plate
+  for (let c = 0; c < 6; c++) {
+    const x = RX0 + COLW * (c + 0.5), slot = c * 6 + r + 1;
+    const prod = products[sel[slot].p];
+    // slot number tag on the shelf front
+    const tag = Plane(0.05, 0.026, mStd({ map: ctex(96, 48, (g, w, h) => { g.fillStyle = '#f4f4ef'; g.fillRect(0, 0, w, h); g.fillStyle = sel[slot].hot ? '#d23a2a' : '#1d5cd3'; g.fillRect(0, 0, 10, h); g.fillStyle = '#1b1b1b'; g.font = '700 30px "Barlow Condensed",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(slot).padStart(2, '0'), w / 2 + 5, h / 2 + 1); }), roughness: 0.6 }), rack, x, yb + 0.018, 0.0915);
+    for (let t = 0; t < TPR; t++) {
+      const y = yb + 0.03 + t * (RH / TPR), a = t % 2 ? 0.12 : -0.12;
+      dm.position.set(x, y, -0.12); dm.rotation.set(a, 0, 0); dm.scale.set(1, 1, 1); dm.updateMatrix();
+      trayIM.setMatrixAt(ti, dm.matrix);
+      const fz = 0.08, fy = y - (fz + 0.12) * Math.sin(a);
+      dm.position.set(x, fy + 0.01, fz); dm.rotation.set(0, 0, 0); dm.updateMatrix(); lipIM.setMatrixAt(ti, dm.matrix); ti++;
+      if (r === RROWS - 1 && t === 1 && c % 2) continue;   // partly sold top slots
+      for (let k = 0; k < 5; k++) {
+        const dz = -0.27 + k * 0.069 + 0.12;
+        dm.position.set(x, y - dz * Math.sin(a) + 0.036, -0.12 + dz * Math.cos(a));
+        dm.rotation.set(0, 0, Math.PI / 2); dm.updateMatrix();
+        canIM.setMatrixAt(ci, dm.matrix); canIM.setColorAt(ci, col.set(prod.bg)); ci++;
+      }
+    }
+  }
+}
+B(-0.56, 0.55, 1.826, 1.834, -0.33, 0.09, M.galv, rack);
+canIM.count = ci;
+rack.add(trayIM, lipIM, canIM);
+// insulated room partitions (L | C | R)
+[RX0 + COLW * 2, RX0 + COLW * 3].forEach(px => B(px - 0.012, px + 0.012, 0.30, 1.845, -0.34, 0.095, M.liner, rack));
+// vend mechanism under each rack (solenoid + flap stoppers)
+for (let c = 0; c < 6; c++) {
+  B(RX0 + COLW * c + 0.02, RX0 + COLW * (c + 1) - 0.02, 0.372, 0.398, -0.22, 0.07, M.black, rack, 0.004);
+  B(RX0 + COLW * c + 0.04, RX0 + COLW * c + 0.075, 0.376, 0.396, 0.07, 0.085, M.copper, rack);
+}
+// product chute (shooter): perforated sloped plate with cushioning, carries cans forward to the outlet
+const chuteTex = ctex(256, 128, (g, w, h) => {
+  g.fillStyle = '#a9afb4'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#3a3f44'; for (let r = 0; r < 6; r++) for (let c = 0; c < 14; c++) { g.beginPath(); g.arc(10 + c * 18 + (r % 2) * 9, 10 + r * 21, 4.5, 0, 7); g.fill(); }
+}, { repeat: [5, 2] });
+const CHUTE_A = 0.175;
+const chute = B(-0.555, 0.545, 0.333, 0.337, -0.2, 0.14, mStd({ map: chuteTex, roughness: 0.45, metalness: 0.5 }), vm);
+chute.position.set(-0.005, 0.335, -0.03); chute.rotation.x = CHUTE_A;
+const chuteY = z => 0.337 - (z + 0.03) * Math.tan(CHUTE_A);
+// evaporator coil under rack
+B(-0.55, 0.55, 0.30, 0.40, -0.335, -0.225, M.fins, vm);
+// insulated deck between storage and machine room
+B(-0.575, 0.575, 0.28, 0.30, -0.345, 0.11, M.liner, vm);
+
+/* ---- machine room ---- */
+const mr = new THREE.Group(); vm.add(mr);
+// condenser + grille
+B(-0.2, 0.2, 0.09, 0.27, -0.06, 0.08, M.fins, mr);
+const grille = Plane(0.4, 0.18, M.grille, mr, 0, 0.18, 0.12);
+// compressor
+const comp = new THREE.Group(); comp.position.set(-0.36, 0.08, -0.17); mr.add(comp);
+Cyl(0.11, 0.13, 0, 0.065, 0, M.compBody, comp, 'y', 40);
+const dome = new THREE.Mesh(new THREE.SphereGeometry(0.11, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2), M.compBody);
+dome.scale.y = 0.62; dome.position.y = 0.13; comp.add(dome);
+const seam = new THREE.Mesh(new THREE.TorusGeometry(0.111, 0.004, 8, 48), M.compBody); seam.rotation.x = Math.PI / 2; seam.position.y = 0.13; comp.add(seam);
+const lbl = new THREE.Mesh(new THREE.CylinderGeometry(0.1105, 0.1105, 0.06, 32, 1, true, -0.55, 1.1), M.compLabel);
+lbl.position.y = 0.07; comp.add(lbl);
+B(-0.13, 0.13, -0.005, 0.01, -0.09, 0.09, M.galv, comp);
+tube([[-0.25, 0.2, -0.17], [-0.25, 0.25, -0.1], [-0.15, 0.25, -0.05], [-0.1, 0.18, -0.02]], 0.006, M.copper, mr);
+tube([[-0.46, 0.15, -0.17], [-0.5, 0.22, -0.08], [-0.42, 0.26, 0.0], [-0.2, 0.24, 0.0]], 0.005, M.copper, mr);
+// main relay board
+B(0.22, 0.41, 0.095, 0.275, 0.08, 0.088, M.galv, mr);
+Plane(0.17, 0.15, M.relayPcb, mr, 0.315, 0.185, 0.0905);
+const harnessCols = [0xe53935, 0xfdd835, 0x1e88e5, 0x8e24aa, 0xff9800, 0xeeeeee, 0xf06292];
+harnessCols.forEach((hc, i) => tube([[0.27 + i * 0.012, 0.25, 0.095], [0.29 + i * 0.01, 0.272, 0.11], [0.36, 0.276, 0.06], [0.42, 0.26, -0.05], [0.52, 0.27, -0.12]], 0.0035, mStd({ color: hc, roughness: 0.5 }), mr));
+// inverter board (left wall)
+B(-0.572, -0.566, 0.1, 0.27, -0.06, 0.13, M.galv, mr);
+Plane(0.17, 0.14, M.invPcb, mr, -0.565, 0.185, 0.035, Math.PI / 2);
+// master board (right wall)
+B(0.566, 0.572, 0.1, 0.27, -0.06, 0.13, M.galv, mr);
+Plane(0.17, 0.14, M.masterPcb, mr, 0.565, 0.185, 0.035, -Math.PI / 2);
+tube([[0.564, 0.24, 0.0], [0.5, 0.27, 0.05], [0.44, 0.26, 0.1], [0.42, 0.2, 0.11]], 0.008, M.black, mr);
+// breaker / relay box
+B(0.43, 0.555, 0.1, 0.27, -0.2, -0.1, M.galv, mr, 0.004);
+B(0.465, 0.525, 0.19, 0.25, -0.1, -0.085, M.clear, mr, 0.004);
+B(0.48, 0.51, 0.205, 0.235, -0.105, -0.095, M.black, mr);
+B(0.445, 0.5, 0.13, 0.16, -0.1, -0.092, M.sticker, mr);
+
+/* ---- inner (insulated) door ---- */
+const innerPivot = new THREE.Group(); innerPivot.position.set(-0.575, 0, 0.15); vm.add(innerPivot);
+const inner = new THREE.Group(); inner.position.set(0.575, 0, -0.15); innerPivot.add(inner);
+B(-0.575, 0.565, 0.30, 1.10, 0.11, 0.15, M.steelDoor, inner, 0.006);
+[['左室 L', 'HOT ⇄ COLD', '1–12', '#d23a2a', RX0 + COLW], ['中室 C', 'HOT ⇄ COLD', '13–18', '#c0702a', RX0 + COLW * 2.5], ['右室 R', 'COLD', '19–36', '#1d5cd3', RX0 + COLW * 4.5]].forEach(([nm, mode, cols, c, x]) => {
+  Plane(0.16, 0.045, mStd({ roughness: 0.55, map: ctex(320, 90, (g, w, h) => {
+    g.fillStyle = '#f5f5f0'; g.fillRect(0, 0, w, h); g.fillStyle = c; g.fillRect(0, 0, w, 30);
+    g.fillStyle = '#fff'; g.font = `700 22px ${FJ}`; g.fillText(nm, 10, 23); g.textAlign = 'right'; g.fillText(mode, w - 10, 23);
+    g.fillStyle = '#222'; g.textAlign = 'left'; g.font = `600 30px ${FD}`; g.fillText('COLUMN ' + cols, 10, 75);
+  }) }), inner, x, 1.065, 0.1505);
+});
+Plane(0.06, 0.08, M.stickerTx, inner, 0.45, 0.68, 0.1505);
+Plane(0.08, 0.025, M.sticker, inner, -0.48, 0.80, 0.1505);
+[[-0.52, -0.36], [-0.34, -0.19], [-0.17, -0.02], [0.04, 0.26]].forEach(([a, b]) => {
+  B(a, b, 0.315, 0.455, 0.15, 0.172, M.black, inner, 0.008);
+  Cyl(0.05, (b - a) - 0.03, (a + b) / 2, 0.38, 0.163, M.rotor, inner, 'x', 24);
+});
+B(0.545, 0.565, 0.55, 0.65, 0.15, 0.158, M.chrome, inner);
+B(0.545, 0.565, 0.86, 0.94, 0.15, 0.158, M.chrome, inner);
+
+/* ---- front door ---- */
+const doorPivot = new THREE.Group(); doorPivot.position.set(-HX, 0, ZF); vm.add(doorPivot);
+const door = new THREE.Group(); door.position.set(HX, 0, -ZF); doorPivot.add(door);
+{
+  const W0 = -0.591, W1 = 0.591, Y0 = 0.075, Y1 = 1.862;
+  const sh = new THREE.Shape(); sh.moveTo(W0, Y0); sh.lineTo(W1, Y0); sh.lineTo(W1, Y1); sh.lineTo(W0, Y1); sh.closePath();
+  const hole = (a, b, c, d) => { const p = new THREE.Path(); p.moveTo(a, c); p.lineTo(a, d); p.lineTo(b, d); p.lineTo(b, c); p.closePath(); sh.holes.push(p); };
+  hole(-0.526, 0.387, 0.81, 1.78); hole(-0.41, 0.26, 0.254, 0.426);
+  const fg = new THREE.ExtrudeGeometry(sh, { depth: 0.012, bevelEnabled: true, bevelThickness: 0.003, bevelSize: 0.003, bevelSegments: 2, curveSegments: 4 });
+  const front = new THREE.Mesh(fg, M.paint); front.position.z = 0.35; door.add(front);
+  // side skins
+  B(-0.595, -0.585, 0.065, 1.865, ZC, 0.352, M.paint, door, 0.003);
+  B(0.585, 0.595, 0.065, 1.865, ZC, 0.352, M.paint, door, 0.003);
+  B(-0.595, 0.595, 1.855, 1.865, ZC, 0.352, M.paint, door, 0.003);
+  B(-0.595, 0.595, 0.065, 0.075, ZC, 0.352, M.paint, door, 0.003);
+}
+// display chamber (inside door)
+const X0 = -0.526, X1 = 0.387, Z0 = 0.81, Z1 = 1.78;
+B(X0, X1, Z0, Z1, 0.175, 0.185, M.inner, door);
+B(X0, X1, Z1, Z1 + 0.01, 0.185, 0.35, M.inner, door);
+B(X0, X1, Z0 - 0.01, Z0, 0.185, 0.35, M.inner, door);
+B(X0 - 0.01, X0, Z0, Z1, 0.185, 0.35, M.inner, door);
+B(X1, X1 + 0.01, Z0, Z1, 0.185, 0.35, M.inner, door);
+B(X0 + 0.02, X1 - 0.02, Z1 - 0.018, Z1 - 0.004, 0.31, 0.33, M.led, door);
+const glass = B(X0, X1, Z0, Z1, 0.347, 0.349, M.glass, door); glass.renderOrder = 2;
+const dispLight = new THREE.PointLight(0xe6efff, 0.35, 1.6, 2); dispLight.position.set(-0.07, 1.7, 0.29); door.add(dispLight);
+
+// rails, buttons, holders, samples
+const samples = new THREE.Group(); door.add(samples);
+const rows = [1.47, 1.155, 0.86], pitch = (0.36 + 0.5) / 12;
+const btnMats = [M.blueBtn, M.blueBtn, M.blueBtn, M.blueBtn, M.btnFace, M.blueBtn];
+const holderGeo = new THREE.CylinderGeometry(0.017, 0.017, 0.006, 24);
+const canSampleGeo = new THREE.CylinderGeometry(0.033, 0.033, 0.115, 32);
+const canTopGeo = new THREE.CylinderGeometry(0.027, 0.031, 0.008, 32);
+const petGeo = new THREE.LatheGeometry([[0, 0], [0.03, 0], [0.033, 0.006], [0.033, 0.125], [0.03, 0.145], [0.017, 0.178], [0.0135, 0.182], [0.0135, 0.198], [0, 0.198]].map(([r, y]) => new THREE.Vector2(r, y)), 32);
+const liqGeo = new THREE.CylinderGeometry(0.0305, 0.0305, 0.14, 24);
+const petLabelGeo = new THREE.CylinderGeometry(0.0336, 0.0336, 0.07, 32, 1, true);
+const capGeo = new THREE.CylinderGeometry(0.0145, 0.0145, 0.018, 20);
+const btnMeshes = [];
+const btnFlash = [M.blueBtn, M.blueBtn, M.blueBtn, M.blueBtn, mStd({ color: 0xffffff, emissive: 0xfff2a8, emissiveIntensity: 2 }), M.blueBtn];
+function priceLabel(s) {
+  return mStd({ roughness: 0.5, map: ctex(128, 56, (g, w, h) => {
+    g.fillStyle = s.hot ? '#d23a2a' : '#1d5cd3'; g.fillRect(0, 0, w, 26);
+    g.fillStyle = '#fff'; g.font = `700 19px ${FJ}`; g.textAlign = 'center'; g.fillText(s.hot ? 'あったか〜い' : 'つめた〜い', w / 2, 20);
+    g.fillStyle = '#fbfbf7'; g.fillRect(0, 26, w, 30); g.fillStyle = '#111'; g.font = `700 27px ${FD}`; g.fillText(String(s.price), w / 2, 52);
+  }) });
+}
+rows.forEach((zr, r) => {
+  B(-0.515, 0.375, zr - 0.066, zr + 0.03, 0.19, 0.336, M.paint, door, 0.004);
+  for (let i = 0; i < 12; i++) {
+    const x = -0.5 + pitch * (i + 0.5) + (i % 2 ? 0.004 : -0.004);
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.054, 0.02, 0.01), btnMats);
+    b.position.set(x, zr + 0.014, 0.341); door.add(b);
+    const n = (2 - r) * 12 + i + 1; b.userData.sel = n; btnMeshes[n] = b;
+    Plane(0.056, 0.0245, priceLabel(sel[n]), door, x, zr - 0.049, 0.3365);
+    const h = new THREE.Mesh(holderGeo, M.black); h.position.set(x, zr - 0.018, 0.337); h.rotation.x = Math.PI / 2; h.scale.set(1.25, 1, 0.75); door.add(h);
+    const p = sel[n].p, lab = mStd({ map: labelTex[p], roughness: 0.28, metalness: 0.35 });
+    if (r === 0) {
+      const pet = new THREE.Mesh(petGeo, M.pet); pet.position.set(x, zr + 0.03, 0.27); pet.renderOrder = 3; samples.add(pet);
+      const lq = new THREE.Mesh(liqGeo, mStd({ color: products[p].liq, roughness: 0.2, transparent: true, opacity: 0.85 })); lq.position.set(x, zr + 0.03 + 0.075, 0.27); samples.add(lq);
+      const pl = new THREE.Mesh(petLabelGeo, mStd({ map: labelTex[p], roughness: 0.4, side: THREE.DoubleSide })); pl.position.set(x, zr + 0.03 + 0.07, 0.27); samples.add(pl);
+      const cp = new THREE.Mesh(capGeo, M.cap); cp.position.set(x, zr + 0.03 + 0.207, 0.27); samples.add(cp);
+    } else {
+      const cn = new THREE.Mesh(canSampleGeo, [lab, M.canEnd, M.canEnd]); cn.position.set(x, zr + 0.03 + 0.0575, 0.27); samples.add(cn);
+      const tp = new THREE.Mesh(canTopGeo, M.canEnd); tp.position.set(x, zr + 0.03 + 0.119, 0.27); samples.add(tp);
+    }
+  }
+});
+
+// coin unit
+B(0.364, 0.514, 0.81, 1.02, 0.352, 0.387, M.silver, door, 0.006);
+B(0.38, 0.5, 0.962, 1.006, 0.386, 0.39, M.black, door, 0.002);
+Plane(0.1, 0.024, M.lcd, door, 0.44, 0.984, 0.3905);
+Cyl(0.026, 0.008, 0.465, 0.905, 0.39, M.chrome, door, 'z', 40);
+B(0.4625, 0.4675, 0.887, 0.923, 0.39, 0.396, M.black, door);
+const lever = B(0.385, 0.43, 0.888, 0.906, 0.386, 0.398, M.orange, door, 0.003); lever.rotation.z = -0.2;
+B(0.38, 0.5, 0.83, 0.85, 0.386, 0.3875, M.sticker, door);
+// lower controls
+B(0.087, 0.179, 0.656, 0.744, 0.355, 0.377, M.black, door, 0.003);
+B(0.097, 0.169, 0.698, 0.704, 0.376, 0.378, M.dark, door);
+B(0.202, 0.295, 0.656, 0.744, 0.355, 0.377, M.black, door, 0.003);
+B(0.212, 0.285, 0.666, 0.705, 0.376, 0.381, M.orange, door, 0.002);
+B(0.433, 0.49, 0.65, 0.75, 0.355, 0.375, M.black, door, 0.004);
+Cyl(0.016, 0.02, 0.4615, 0.712, 0.38, M.chrome, door, 'z', 32);
+B(0.4605, 0.4625, 0.702, 0.722, 0.389, 0.391, M.dark, door);
+B(-0.445, -0.087, 0.49, 0.77, 0.36, 0.3655, M.adPanel, door, 0.006);
+// outlet
+B(-0.41, 0.26, 0.254, 0.426, 0.21, 0.22, M.dark, door);
+B(-0.41, 0.26, 0.254, 0.262, 0.21, 0.35, M.dark, door);
+B(-0.41, -0.4, 0.254, 0.426, 0.21, 0.35, M.dark, door);
+B(0.25, 0.26, 0.254, 0.426, 0.21, 0.35, M.dark, door);
+B(-0.41, 0.26, 0.416, 0.426, 0.21, 0.35, M.dark, door);
+const flap = B(-0.405, 0.255, 0.262, 0.42, 0.355, 0.359, M.smoke, door); flap.rotation.x = -0.08;
+[[-0.2, -0.12], [-0.105, -0.055], [-0.045, 0], [0.01, 0.08]].forEach(([a, b]) => B(a, b, 0.37, 0.405, 0.3595, 0.3615, M.sticker, door));
+B(0.395, 0.44, 0.335, 0.385, 0.365, 0.367, M.orange, door);
+B(0.39, 0.47, 0.29, 0.325, 0.365, 0.367, M.sticker, door);
+B(0.40, 0.46, 0.085, 0.115, 0.365, 0.367, M.black, door);
+
+// door inner side
+{
+  const back = new THREE.Mesh(new THREE.BoxGeometry(1.17, 1.045, 0.01), [M.paint, M.paint, M.paint, M.paint, M.paint, M.sheets]);
+  back.position.set(0, 1.3325, 0.17); door.add(back);
+  B(-0.585, 0.585, 0.075, 0.81, 0.30, 0.31, M.teal, door);
+  B(-0.585, 0.585, 0.79, 0.81, ZC, 0.31, M.teal, door);
+  // coin mech (behind coin unit) with clear cover
+  B(0.30, 0.52, 0.45, 0.76, 0.215, 0.30, M.black, door, 0.006);
+  B(0.29, 0.53, 0.44, 0.77, 0.205, 0.30, M.clear, door, 0.006).renderOrder = 2;
+  B(0.34, 0.40, 0.62, 0.70, 0.205, 0.215, M.orange, door);
+  // bill validator
+  B(0.08, 0.2, 0.56, 0.77, 0.21, 0.30, M.black, door, 0.008);
+  // master box: power box with red switch, service remote, keypad box
+  B(-0.33, -0.03, 0.47, 0.66, 0.225, 0.30, M.beige, door, 0.01);
+  B(-0.25, -0.225, 0.62, 0.64, 0.218, 0.226, M.red, door, 0.002);
+  Plane(0.05, 0.022, M.sticker, door, -0.29, 0.635, 0.2245, Math.PI);
+  const rm = new THREE.Mesh(new RoundedBoxGeometry(0.2, 0.08, 0.025, 3, 0.012), [M.black, M.black, M.black, M.black, M.black, M.remote]);
+  rm.position.set(-0.17, 0.705, 0.255); door.add(rm);
+  const coil = [];
+  for (let i = 0; i <= 120; i++) { const t = i / 120; coil.push(new THREE.Vector3(-0.31 + 0.012 * Math.cos(t * 40), 0.68 - t * 0.24, 0.25 + 0.012 * Math.sin(t * 40))); }
+  door.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(coil), 300, 0.0025, 6, false), M.black));
+  const kp = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.07), [M.black, M.black, M.black, M.black, M.black, M.keypad]);
+  kp.position.set(-0.18, 0.37, 0.265); door.add(kp);
+  // battery compartment plate (oval holes)
+  const bp = new THREE.Mesh(new THREE.BoxGeometry(1.17, 0.17, 0.01), [M.paint, M.paint, M.paint, M.paint, M.paint, M.ovalPlate]);
+  bp.position.set(0, 0.16, 0.17); door.add(bp);
+  B(-0.5, 0.5, 0.09, 0.24, 0.18, 0.29, M.beige, door, 0.01);
+}
+
+/* ---- interior light (fades in with door) ---- */
+const cabLight = new THREE.PointLight(0xe3ecff, 0, 3, 2); cabLight.position.set(0, 1.55, 0.45); vm.add(cabLight);
+const mrLight = new THREE.PointLight(0xfff1dc, 0, 1.6, 2); mrLight.position.set(0.05, 0.25, 0.45); vm.add(mrLight);
+
+vm.traverse(o => { if (o.isMesh) { o.castShadow = !o.material.transparent; o.receiveShadow = true; } });
+floor.castShadow = false;
+
+/* ================= PARTS / HOTSPOTS ================= */
+const ZONES = { ext: 'ภายนอก', door: 'ด้านในประตู', cab: 'ห้องเก็บสินค้า', mr: 'ห้องเครื่อง' };
+const SPECS = [
+  ['形名', 'Model', 'P-RK36-HPAPER'],
+  ['品名', 'Type', '缶・ボトル飲料自動販売機'],
+  ['定格電圧 / 周波数', 'Rated voltage', '100 V · 50/60 Hz'],
+  ['定格消費電力', 'Rated power', '159 / 159 W'],
+  ['電熱装置の定格消費電力', 'Heater', '450 W'],
+  ['調整庫内容積', 'Storage volume', '1,693 L'],
+  ['年間消費電力量', 'Annual energy', '978 kWh'],
+  ['省エネ基準達成率', 'Efficiency vs. standard', '119 %'],
+  ['冷媒 / 封入量', 'Refrigerant', 'R600a · 53 g'],
+  ['地球温暖化係数', 'GWP', '3'],
+  ['断熱発泡ガス', 'Insulation foam gas', 'シクロペンタン (cyclopentane)'],
+  ['質量', 'Mass', '275 kg'],
+  ['製造番号', 'Serial no.', '1806535051'],
+  ['漏電遮断器', 'Earth-leakage breaker', '付 (fitted)'],
+];
+const parts = [
+  // ลำดับและชื่อตรงกับขั้นถ่ายรูปใน CDB (PS_BASE) — id = key ของ CDB
+  { id: 'nameplate', zone: 'ext', parent: vm, pos: [HX + 0.004, 0.42, -0.16], n: [1, 0, 0], need: {}, off: [0.75, 0.12, 0.3],
+    th: 'ป้ายข้อมูลหลักของตู้', en: 'Nameplate', photos: ['nameplate'], specs: true,
+    body: 'ถ่ายป้ายโลหะข้างตู้ให้เต็มเฟรม อ่านรุ่น (形名) และเลขเครื่อง (製造番号) ได้ชัด' },
+  { id: 'other_nameplate', zone: 'cab', parent: inner, pos: [0.45, 0.68, 0.16], n: [0, 0, 1], need: { door: 1 }, view: { dist: 0.7, lift: 0.05, side: 0 }, approx: true,
+    th: 'ป้ายข้อมูลเพิ่มเติม', en: 'Other Nameplate', photos: [],
+    body: 'ป้ายหรือสติกเกอร์อื่นที่มีรหัสรุ่น เช่น ป้ายบนประตูใน ถ่ายทีละป้าย' },
+  { id: 'outside', zone: 'ext', parent: door, pos: [-0.3, 0.62, 0.37], n: [0, 0, 1], need: {}, view: { dist: 3.1, lift: 0.35, side: 0.9 },
+    th: 'ภาพรวมภายนอกตู้', en: 'Outside', photos: ['outside'],
+    body: 'ปิดประตู ถ่ายหน้าตู้ให้เห็นทั้งตู้ ตั้งแต่ด้านบนถึงขาตั้ง' },
+  { id: 'button', zone: 'ext', parent: door, pos: [-0.07, 0.88, 0.35], n: [0, 0, 1], need: {}, view: { dist: 0.9, lift: 0.15, side: 0.25 },
+    th: 'แผงปุ่มกดควบคุม', en: 'Button Panel', photos: ['buttonpanel'],
+    body: 'เปิดกระจกตู้โชว์ ยกรางปุ่มขึ้น แล้วถ่ายด้านหลังรางให้เห็นหลอด LED และสายไฟ' },
+  { id: 'breaker', zone: 'mr', parent: vm, pos: [0.495, 0.2, -0.085], n: [0, 0, 1], need: { door: 1 }, off: [-0.08, 0.09, 0.8], approx: true,
+    th: 'เบรกเกอร์ / Circuit Breaker', en: 'Breaker', photos: ['breaker-1', 'breaker-2', 'breaker-3', 'breaker-4'],
+    body: 'ถ่ายกล่องเบรกเกอร์ในห้องเครื่อง 4 รูป: ตำแหน่งในตู้ กล่องที่ถอดออก ด้านในกล่อง และแผนผังบนฝา' },
+  { id: 'door_side', zone: 'door', parent: door, pos: [0.15, 1.32, 0.16], n: [0, 0, -1], need: { door: 1 }, view: { dist: 3.7, lift: -0.37, side: 0 }, look: [0, -0.37, 0],
+    th: 'ด้านในประตูตู้', en: 'Door Side', photos: ['doorside', 'battery'],
+    body: 'เปิดประตูหน้า ถ่ายด้านในให้เห็นทั้งบาน แล้วถ่ายแบตเตอรี่ที่อยู่ล่างสุดเพิ่มอีกรูป' },
+  { id: 'master_box', zone: 'door', parent: door, pos: [-0.18, 0.56, 0.22], n: [0, 0, -1], need: { door: 1 }, view: { dist: 0.85, lift: 0.08, side: 0 },
+    th: 'กล่องควบคุมหลักและรีโมต', en: 'Master Box & Remote', photos: ['masterbox'],
+    body: 'ถ่ายกล่องสีครีม (สวิตช์แดง) พร้อมรีโมตและแผงปุ่มสีดำด้านล่างในรูปเดียว' },
+  { id: 'boards_inside', zone: 'mr', parent: vm, pos: [0.315, 0.185, 0.092], n: [0, 0, 1], need: { door: 1 }, off: [0.05, 0.08, 0.72], approx: true,
+    th: 'บอร์ดภายในกล่องไฟ', en: 'Boards Inside Power Box', photos: ['board-relay', 'board-inverter'],
+    body: 'ถ่ายบอร์ดในห้องเครื่องทีละแผ่น คือบอร์ดรีเลย์กับบอร์ดอินเวอร์เตอร์ ให้อ่านรหัสบอร์ดได้' },
+  { id: 'inventory_side', zone: 'cab', parent: vm, pos: [0.0, 1.45, 0.1], n: [0, 0, 1], need: { door: 1 }, off: [0.45, 0.1, 3.6], look: [0, -0.5, 0], approx: true,
+    th: 'ด้านช่องสินค้า', en: 'Inventory Side', photos: ['rack'],
+    body: 'เปิดประตูหน้า ถ่ายห้องเก็บสินค้าทั้งหมด ให้เห็นแร็คด้านบนและพัดลม 4 ตัวด้านล่าง' },
+  { id: 'master_board', zone: 'mr', parent: vm, pos: [0.564, 0.185, 0.035], n: [-1, 0, 0], need: { door: 1 }, off: [-0.62, 0.03, 0.7], approx: true,
+    th: 'บอร์ดควบคุมหลัก', en: 'Master Board', photos: ['masterboard'],
+    body: 'ถ่ายบอร์ดบนผนังขวาของห้องเครื่องให้เห็นทั้งแผ่น รหัสบอร์ดขึ้นต้นด้วย CC-CS' },
+  { id: 'compressor', zone: 'mr', parent: vm, pos: [-0.36, 0.17, -0.06], n: [0, 0, 1], need: { door: 1 }, off: [0.38, 0.12, 0.95], approx: true,
+    th: 'คอมเพรสเซอร์ระบบทำความเย็น', en: 'Compressor', photos: ['compressor'],
+    body: 'ถ่ายฉลากบนคอมเพรสเซอร์ให้อ่านรุ่นได้ เครื่องนี้คือ EFI120E13DCH ใช้ R600a' },
+];
+parts.forEach((p, i) => {
+  p.no = i + 1;
+  p.anchor = new THREE.Object3D(); p.anchor.position.set(...p.pos); p.parent.add(p.anchor);
+  p.nLocal = new THREE.Vector3(...p.n);
+});
+
+/* ---------------- state ---------------- */
+const DOOR_MAX = THREE.MathUtils.degToRad(115), INNER_MAX = THREE.MathUtils.degToRad(80);
+const S = { door: 0, doorT: 0, inner: 0, innerT: 0, pins: true, current: null };
+
+function setDoor(open) {
+  S.doorT = open ? 1 : 0;
+  if (!open) S.innerT = 0;
+  syncButtons();
+}
+function setInner(open) {
+  if (open) S.doorT = 1;
+  S.innerT = open ? 1 : 0;
+  syncButtons();
+}
+function syncButtons() {
+  const o = S.doorT === 1;
+  $('#doorBtn').setAttribute('aria-pressed', o);
+  $('#doorTxt').textContent = o ? 'ปิดประตู' : 'เปิดประตู';
+  $('#doorSub').textContent = o ? 'CLOSE' : 'OPEN';
+  $('#innerBtn').setAttribute('aria-pressed', S.innerT === 1);
+}
+
+/* ---------------- camera flights ---------------- */
+let fly = null;
+function flyTo(pos, target, dur = 1.25) {
+  if (reduceMotion) { camera.position.copy(pos); controls.target.copy(target); fly = null; return; }
+  fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos.clone(), t1: target.clone(), u: 0, dur };
+}
+controls.addEventListener('start', () => { fly = null; hideHint(); });
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const VIEWS = {
+  overview: { door: 0, inner: 0, pos: V(2.2, 1.45, 3.3), tgt: V(0, 0.95, 0) },
+  interior: { door: 1, inner: 0, pos: V(0.55, 1.25, 2.15), tgt: V(0, 0.98, 0) },
+  machine: { door: 1, inner: 0, pos: V(0.25, 0.45, 1.35), tgt: V(0, 0.19, 0) },
+};
+function goView(name) {
+  if (name === 'door_side') { openPart(parts.find(p => p.id === 'door_side'), false); return; }
+  const v = VIEWS[name];
+  setDoor(!!v.door); if (!v.inner) S.innerT = 0; syncButtons();
+  flyTo(v.pos, v.tgt);
+}
+
+const _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _n = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _r = new THREE.Vector3();
+function partView(p) {
+  const d0 = doorPivot.rotation.y, i0 = innerPivot.rotation.y;
+  const dOpen = p.need.door ? 1 : (S.doorT);
+  doorPivot.rotation.y = -dOpen * DOOR_MAX;
+  innerPivot.rotation.y = -(p.need.inner ? 1 : S.innerT) * INNER_MAX;
+  vm.updateMatrixWorld(true);
+  p.anchor.getWorldPosition(_p);
+  p.anchor.parent.getWorldQuaternion(_q);
+  _n.copy(p.nLocal).applyQuaternion(_q).normalize();
+  doorPivot.rotation.y = d0; innerPivot.rotation.y = i0; vm.updateMatrixWorld(true);
+  let pos;
+  if (p.off) pos = _p.clone().add(V(...p.off));
+  else {
+    _r.crossVectors(_n, _up).normalize();
+    pos = _p.clone().addScaledVector(_n, p.view.dist).addScaledVector(_up, p.view.lift).addScaledVector(_r, -p.view.side);
+  }
+  const tgt = _p.clone();
+  if (p.look) { tgt.add(V(...p.look)); if (p.off) pos.add(V(...p.look)); }   // frame a wider area than the pin itself
+  if (canvas.clientWidth <= 760) pos.sub(tgt).multiplyScalar(1.7).add(tgt);   // phone: the sheet leaves a smaller window
+  return { pos, tgt };
+}
+
+/* ---------------- UI: parts list ---------------- */
+const listEl = $('#partsList');
+$('#partsCount').textContent = parts.length + ' ขั้น';
+let lastZone = null;
+parts.forEach(p => {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'part-btn'; b.id = 'part-' + p.id;
+  b.innerHTML = `<span class="part-no">${String(p.no).padStart(2, '0')}</span><span class="part-txt"><b>${p.en}</b><small>${p.th}</small></span>`;
+  b.addEventListener('click', () => { openPart(p); if (matchMedia('(max-width:760px)').matches) togglePartsSheet(false); });
+  listEl.appendChild(b); p.listBtn = b;
+});
+
+/* ---------------- UI: pins ---------------- */
+const pinsEl = $('#pins');
+parts.forEach(p => {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'pin';
+  b.setAttribute('aria-label', `${p.no}. ${p.th}`);
+  b.innerHTML = `${p.no}<span class="pin-label">${p.th}</span>`;
+  b.addEventListener('click', e => { e.stopPropagation(); openPart(p); });
+  pinsEl.appendChild(b); p.pin = b; p.vis = 0;
+});
+
+/* ---------------- UI: drawer ---------------- */
+const drawer = $('#drawer');
+function openPart(p, showDrawer = true) {
+  if (p.need.door) setDoor(true);
+  if (p.need.inner) setInner(true);
+  const v = partView(p);
+  flyTo(v.pos, v.tgt, 1.4);
+  if (!showDrawer) return;
+  S.current = p;
+  parts.forEach(q => { q.pin.classList.toggle('active', q === p); q.listBtn.setAttribute('aria-current', q === p); });
+  renderDrawer(p, 0);
+  drawer.hidden = false;
+  $('#parts').classList.add('dimmed');
+}
+function closeDrawer() {
+  drawer.hidden = true; S.current = null;
+  parts.forEach(q => { q.pin.classList.remove('active'); q.listBtn.setAttribute('aria-current', false); });
+  $('#parts').classList.remove('dimmed');
+}
+function renderDrawer(p, photoIdx) {
+  const ph = p.photos[photoIdx];
+  const specs = p.specs ? `<table class="specs"><tbody>${SPECS.map(([jp, en, v]) => `<tr><th>${jp}<span>${en}</span></th><td>${v}</td></tr>`).join('')}</tbody></table>
+     <p class="d-note">ป้ายไม่ระบุขนาดตู้ ขนาดในโมเดลอ้างอิงตู้ 36 ช่องรุ่นใกล้เคียง</p>` : '';
+  drawer.innerHTML = `
+    <div class="d-head"><span class="eyebrow">ขั้นที่ ${p.no}/${parts.length} · ${ZONES[p.zone]}</span><button class="icon-btn" id="dClose" type="button" aria-label="ปิดรายละเอียด">×</button></div>
+    <div class="d-scroll">
+      <div class="d-title"><span class="d-no">${String(p.no).padStart(2, '0')}</span><div><h2>${p.th}</h2><p class="d-en">${p.en}</p></div></div>
+      ${ph ? `<figure class="d-photo"><img src="img/${ph}.jpg" alt="รูปจริง: ${p.th}" loading="lazy" onerror="this.closest('figure').remove()"><figcaption>รูปจริง ${photoIdx + 1}/${p.photos.length}</figcaption></figure>` : ''}
+      ${p.photos.length > 1 ? `<div class="thumbs">${p.photos.map((f, i) => `<button type="button" data-i="${i}" aria-label="ภาพที่ ${i + 1}" aria-current="${i === photoIdx}"><img src="img/${f}.jpg" alt="" onerror="this.parentNode.remove()"></button>`).join('')}</div>` : ''}
+      <p class="d-body">${p.body}</p>
+      ${specs}
+      ${p.approx ? '<p class="d-note">ตำแหน่งในโมเดลเป็นค่าประมาณ</p>' : ''}
+    </div>
+    <div class="d-nav"><button class="btn" id="dPrev" type="button">← ก่อนหน้า</button><button class="btn" id="dNext" type="button">ถัดไป →</button></div>`;
+  $('#dClose').onclick = closeDrawer;
+  $('#dPrev').onclick = () => openPart(parts[(p.no - 2 + parts.length) % parts.length]);
+  $('#dNext').onclick = () => openPart(parts[p.no % parts.length]);
+  drawer.querySelectorAll('.thumbs button').forEach(b => b.onclick = () => renderDrawer(p, +b.dataset.i));
+}
+
+/* ---------------- UI: buttons ---------------- */
+$('#doorBtn').onclick = () => { setDoor(S.doorT !== 1); if (S.doorT === 1 && camera.position.distanceTo(controls.target) > 2.6) flyTo(VIEWS.interior.pos, VIEWS.interior.tgt); };
+$('#innerBtn').onclick = () => setInner(S.innerT !== 1);
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => goView(b.dataset.view));
+$('#specBtn').onclick = () => openPart(parts.find(p => p.id === 'nameplate'));
+const toggleBtn = (id, fn) => { const b = $(id); b.onclick = () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); fn(on); }; };
+toggleBtn('#pinsBtn', on => { S.pins = on; pinsEl.style.visibility = on ? '' : 'hidden'; });
+toggleBtn('#samplesBtn', on => { samples.visible = on; });
+toggleBtn('#spinBtn', on => { controls.autoRotate = on; });
+function togglePartsSheet(force) {
+  const el = $('#parts'), open = force ?? !el.classList.contains('open');
+  el.classList.toggle('open', open); $('#partsBtn').setAttribute('aria-pressed', open);
+  if (open) closeDrawer();
+}
+$('#partsBtn').onclick = () => togglePartsSheet();
+window.addEventListener('keydown', e => {
+  if (e.target.closest('input,textarea')) return;
+  if (e.key === 'Escape') closeDrawer();
+  if (e.key === 'o' || e.key === 'O') setDoor(S.doorT !== 1);
+});
+let hintHidden = false;
+function hideHint() { if (!hintHidden) { hintHidden = true; $('#hint').style.opacity = 0; } }
+
+/* ---------------- click on door to toggle ---------------- */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let downXY = null;
+canvas.addEventListener('pointerdown', e => { downXY = [e.clientX, e.clientY]; canvas.classList.add('grabbing'); });
+canvas.addEventListener('pointerup', e => {
+  canvas.classList.remove('grabbing');
+  if (!downXY || Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]) > 5) return;
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects([door, inner], true);
+  if (!hits.length) return;
+  if (hits[0].object.userData.sel) { vend(hits[0].object.userData.sel); hideHint(); return; }
+  let o = hits[0].object, isInner = false;
+  while (o) { if (o === inner) { isInner = true; break; } if (o === door) break; o = o.parent; }
+  if (isInner) setInner(S.innerT !== 1); else setDoor(S.doorT !== 1);
+  hideHint();
+});
+
+/* ---------------- vend demo: button -> vend mech -> chute -> outlet ---------------- */
+const vending = [];
+const toastEl = $('#toast');
+let toastTimer = 0;
+function toast(html) {
+  toastEl.innerHTML = html; toastEl.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 3800);
+}
+function vend(n) {
+  const s = sel[n], k = Math.floor((n - 1) / 6), x = RX0 + COLW * (k + 0.5);
+  const b = btnMeshes[n]; b.material = btnFlash; setTimeout(() => { b.material = btnMats; }, 900);
+  setLCD(String(s.price)); setTimeout(() => setLCD('0'), 2600);
+  const can = new THREE.Mesh(canGeo, mStd({ color: products[s.p].bg, roughness: 0.3, metalness: 0.55, transparent: true }));
+  can.rotation.z = Math.PI / 2; can.castShadow = true; vm.add(can);
+  const outX = THREE.MathUtils.clamp(x, -0.33, 0.17), closed = S.doorT === 0;
+  const pts = [V(x, 0.39, -0.12), V(x, chuteY(-0.12) + 0.035, -0.12), V(outX, chuteY(0.13) + 0.035, 0.13)];
+  const durs = [0.22, 0.95];
+  if (closed) { pts.push(V(outX, 0.297, 0.27)); durs.push(0.35); }
+  vending.push({ can, pts, durs, t: 0, life: 4.2 });
+  toast(`<b>ช่อง ${String(n).padStart(2, '0')}</b> · ${products[s.p].t} · ${s.hot ? '<span class="hot">あったか〜い</span>' : '<span class="cold">つめた〜い</span>'} · ¥${s.price}<br><small>${closed ? 'สินค้าตกลงช่องรับสินค้าแล้ว' : 'ประตูเปิดอยู่: ดูกระป๋องไหลจาก vend mech ลงราง chute'} · แร็ค ${k + 1} / ${k < 2 ? 'ห้องซ้าย' : k === 2 ? 'ห้องกลาง' : 'ห้องขวา'}</small>`);
+}
+function updateVending(dt) {
+  for (let i = vending.length - 1; i >= 0; i--) {
+    const v = vending[i]; v.t += dt;
+    let t = v.t, seg = 0;
+    while (seg < v.durs.length && t > v.durs[seg]) { t -= v.durs[seg]; seg++; }
+    if (seg < v.durs.length) {
+      const u = t / v.durs[seg], e = seg === 0 ? u * u : u;
+      v.can.position.lerpVectors(v.pts[seg], v.pts[seg + 1], e);
+      if (seg > 0) v.can.rotation.x -= dt * 9;
+    } else v.can.position.copy(v.pts[v.pts.length - 1]);
+    const rem = v.life - v.t;
+    if (rem < 0.6) v.can.material.opacity = Math.max(0, rem / 0.6);
+    if (rem <= 0) { vm.remove(v.can); v.can.material.dispose(); vending.splice(i, 1); }
+  }
+}
+
+/* ---------------- theme ---------------- */
+function applyTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  const bg = new THREE.Color(cs.getPropertyValue('--scene').trim() || '#dde2e5');
+  scene.background = bg; scene.fog = new THREE.Fog(bg, 7, 18);
+  M.floor.color.set(cs.getPropertyValue('--floor-tint').trim() || '#ffffff');
+}
+applyTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ---------------- resize ---------------- */
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = w / h < 0.8 ? 52 : 36;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas);
+resize();
+if (camera.aspect < 0.8) camera.position.set(2.4, 1.6, 3.9);
+
+/* ---------------- loop ---------------- */
+const clock = new THREE.Clock();
+const smooth = t => t * t * (3 - 2 * t);
+const _cam = new THREE.Vector3(), _w = new THREE.Vector3(), _proj = new THREE.Vector3();
+let first = true;
+function updatePins() {
+  if (!S.pins) return;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  camera.getWorldPosition(_cam);
+  for (const p of parts) {
+    p.anchor.getWorldPosition(_w);
+    p.anchor.parent.getWorldQuaternion(_q);
+    _n.copy(p.nLocal).applyQuaternion(_q);
+    let show = _n.dot(_r.copy(_cam).sub(_w)) > 0.02;
+    if (p.need.door && S.door < 0.9) show = false;
+    if (p.need.inner && S.inner < 0.9) show = false;
+    if (p.zone === 'mr' || p.zone === 'cab') { if (S.door < 0.9) show = false; }
+    _proj.copy(_w).project(camera);
+    if (_proj.z > 1) show = false;
+    const target = show ? 1 : 0;
+    p.vis += (target - p.vis) * 0.25;
+    const x = (_proj.x * 0.5 + 0.5) * w, y = (-_proj.y * 0.5 + 0.5) * h;
+    p.pin.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+    p.pin.style.opacity = p.vis.toFixed(2);
+    p.pin.style.pointerEvents = p.vis > 0.5 ? 'auto' : 'none';
+    p.pin.tabIndex = p.vis > 0.5 ? 0 : -1;
+  }
+}
+const _off = { x: 0, y: 0 };
+function frameFree(k) {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  let L = 0, Rr = w, T = 0, Bt = h;
+  const bar = $('.bar').getBoundingClientRect(); Bt = Math.min(Bt, bar.top);
+  if (w <= 760) T = $('.hdr').getBoundingClientRect().bottom;
+  if (!drawer.hidden) { const r = drawer.getBoundingClientRect(); if (r.top > h * 0.3) Bt = Math.min(Bt, r.top); else Rr = Math.min(Rr, r.left); }
+  const pe = $('#parts'), pr = pe.getBoundingClientRect();
+  if (+getComputedStyle(pe).opacity > 0.5 && pr.width) { if (pr.top > h * 0.3) Bt = Math.min(Bt, pr.top); else L = Math.max(L, pr.right); }
+  const tx = w / 2 - (L + Rr) / 2, ty = h / 2 - (T + Bt) / 2;
+  _off.x += (tx - _off.x) * k; _off.y += (ty - _off.y) * k;
+  if (Math.abs(_off.x) < 0.5 && Math.abs(_off.y) < 0.5) camera.clearViewOffset();
+  else camera.setViewOffset(w, h, Math.round(_off.x), Math.round(_off.y), w, h);
+}
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  const k = 1 - Math.exp(-dt * (reduceMotion ? 30 : 2.8));
+  S.door += (S.doorT - S.door) * k;
+  S.inner += (S.innerT - S.inner) * k;
+  doorPivot.rotation.y = -smooth(Math.min(1, Math.max(0, S.door))) * DOOR_MAX;
+  innerPivot.rotation.y = -smooth(Math.min(1, Math.max(0, S.inner))) * INNER_MAX;
+  cabLight.intensity = S.door * 1.1;
+  mrLight.intensity = S.door * 0.5;
+  if (fly) {
+    fly.u = Math.min(1, fly.u + dt / fly.dur);
+    const e = fly.u < 0.5 ? 4 * fly.u ** 3 : 1 - (-2 * fly.u + 2) ** 3 / 2;
+    camera.position.lerpVectors(fly.p0, fly.p1, e);
+    controls.target.lerpVectors(fly.t0, fly.t1, e);
+    if (fly.u >= 1) fly = null;
+  }
+  updateVending(dt);
+  frameFree(1 - Math.exp(-dt * 8));
+  controls.update();
+  renderer.render(scene, camera);
+  updatePins();
+  if (first) { first = false; $('#loading').classList.add('done'); }
+  requestAnimationFrame(tick);
+}
+tick();
+
+/* ---------------- link with CDB ---------------- */
+// deep link: ...#<part id> = CDB photo key (e.g. #nameplate, #compressor) or #<view> (overview, interior, machine)
+function openFromHash() {
+  const id = decodeURIComponent(location.hash.slice(1));
+  if (!id) return;
+  const p = parts.find(q => q.id === id);
+  if (p) openPart(p); else if (VIEWS[id] || id === 'door_side') { closeDrawer(); goView(id); }
+}
+window.addEventListener('hashchange', openFromHash);
+setTimeout(openFromHash, 300);
+// "← CDB": if CDB opened this tab, just close it so the CDB tab (and its unsaved form) stays as it was
+$('#cdbBtn').addEventListener('click', e => { if (window.opener && !window.opener.closed) { e.preventDefault(); window.close(); } });
+</script>
+
+</body>
+</html>
